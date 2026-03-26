@@ -26,9 +26,9 @@ function Card({ card, faceUp, highlighted, onClick, small, disabled, peeking, an
       style={{ ...st, ...extra, color: show ? (jk ? '#6b21a8' : red ? '#dc2626' : '#1e293b') : undefined, position: 'relative' }}>
       {show ? (
         <div className="kcf">
-          <div className="kcr"><span className="kr">{jk ? '🃏' : card.rank}</span>{!jk && <span className="ks">{card.suit}</span>}</div>
+          <div className="kcr"><span className="kr">{jk ? '🃏' : card.rank}</span>{!jk && <span className="ks" style={{marginTop: 2}}>{card.suit}</span>}</div>
           <div className="kcc">{jk ? '🃏' : card.suit}</div>
-          <div className="kcr kbr"><span className="kr">{jk ? '🃏' : card.rank}</span>{!jk && <span className="ks">{card.suit}</span>}</div>
+          <div className="kcr kbr"><span className="kr">{jk ? '🃏' : card.rank}</span>{!jk && <span className="ks" style={{marginTop: 2}}>{card.suit}</span>}</div>
         </div>
       ) : (<div className="kcb"><div className="kcbi">♦</div></div>)}
       {cardNumber != null && (
@@ -45,20 +45,23 @@ function Card({ card, faceUp, highlighted, onClick, small, disabled, peeking, an
 // HAND GRID — 2x2 base, penalties on top, stable positions (null = empty slot)
 // ══════════════════════════════════════════
 function HandGrid({ cards, small, faceUp, peek, hl, onClick, anim, hoveredIdx, onHoverIdx, onLeaveIdx, hoverLabelText, glowIdx }) {
-  // Cards is an array where some slots can be null (snapped away)
+  // Cards array: [0]=top-left, [1]=top-right, [2]=bottom-left, [3]=bottom-right
+  // Display numbers: bottom row (idx 2,3) = #1,#2 (yakın/görülen), top row (idx 0,1) = #3,#4 (uzak/görülmeyen)
+  const displayNum = { 0: 3, 1: 4, 2: 1, 3: 2 }; // idx → display number
   const base = [cards[0] || null, cards[1] || null, cards[2] || null, cards[3] || null];
   const pen = cards.slice(4);
   const penRows = [];
   for (let i = 0; i < pen.length; i += 2) penRows.push(pen.slice(i, i + 2));
   const g = small ? 3 : 6;
-  const vg = small ? g + 9 : g + 12; // vertical gap to fit number badges
+  const vg = small ? g + 9 : g + 12;
 
   const rc = (c, idx) => {
     if (!c) return <div key={idx} style={{ width: small ? 44 : 62, height: small ? 62 : 88, border: '2px dashed rgba(255,255,255,.1)', borderRadius: 7, opacity: 0.3 }} />;
+    const dn = idx < 4 ? displayNum[idx] : idx + 1; // penalty cards: #5,#6,...
     return <Card key={idx} card={c} faceUp={faceUp} small={small} peeking={peek?.[idx]}
       highlighted={hl?.(idx) || hoveredIdx === idx} onClick={() => onClick?.(idx)} anim={anim}
       style={anim ? { animationDelay: `${idx * 0.08}s` } : undefined}
-      cardNumber={idx + 1}
+      cardNumber={dn}
       glowColor={glowIdx === idx ? '#f39c12' : null}
       hoverLabel={hoveredIdx === idx ? hoverLabelText : null}
       onHover={() => onHoverIdx?.(idx)} onLeave={() => onLeaveIdx?.()} />;
@@ -66,8 +69,11 @@ function HandGrid({ cards, small, faceUp, peek, hl, onClick, anim, hoveredIdx, o
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: vg }}>
+      {/* Penalty cards (top, farthest) */}
       {penRows.map((r, ri) => <div key={`p${ri}`} style={{ display: 'flex', gap: g }}>{r.map((c, ci) => rc(c, 4 + ri * 2 + ci))}</div>)}
+      {/* Top row: idx 0,1 → #3,#4 (uzak) */}
       <div style={{ display: 'flex', gap: g }}>{[0, 1].map(i => rc(base[i], i))}</div>
+      {/* Bottom row: idx 2,3 → #1,#2 (yakın, oyuncuya en yakın) */}
       <div style={{ display: 'flex', gap: g }}>{[2, 3].map(i => rc(base[i], i))}</div>
     </div>
   );
@@ -144,11 +150,11 @@ function botPlay(gs, botId, pOrder) {
     const ri = activeSlots[Math.floor(Math.random() * activeSlots.length)];
     const old = h[ri]; gs.hands[botId][ri] = { ...d, position: ri }; gs.discardPile.push(old);
     gs.lastAction = { type: 'swap', pid: botId, name: botName, slot: ri, discarded: old, ts: Date.now() };
-    gs.tikTikUsedForCard = null; // new discard, reset tik tik
+    gs.tikTikUsedForCard = null; gs.tikTikLock = null; // new discard, reset tik tik
   } else {
     gs.discardPile.push(d);
     gs.lastAction = { type: 'discard', pid: botId, name: botName, discarded: d, ts: Date.now() };
-    gs.tikTikUsedForCard = null;
+    gs.tikTikUsedForCard = null; gs.tikTikLock = null;
   }
   gs.turnCount = (gs.turnCount || 0) + 1;
   return gs;
@@ -202,6 +208,7 @@ export default function App() {
   const [snapMode, setSnapMode] = useState(null);
   const [snapGiveMode, setSnapGiveMode] = useState(false);
   const [hovIdx, setHovIdx] = useState(null);
+  const [tikTikLock, setTikTikLock] = useState(false); // blocks all moves during TIK TIK
 
   // Swap animation
   const [swapAnim, setSwapAnim] = useState(null);
@@ -288,7 +295,8 @@ export default function App() {
   const copyCode = () => { navigator.clipboard?.writeText(roomCode); setCopied(true); setTimeout(() => setCopied(false), 2000); };
   const inviteFriend = () => {
     const url = window.location.origin + window.location.pathname;
-    window.open(`https://wa.me/?text=${encodeURIComponent(t.inviteMsg.replace('{code}', roomCode).replace('{url}', url))}`, '_blank');
+    const msg = t.inviteMsg.replaceAll('{code}', roomCode).replaceAll('{url}', url);
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   // ── Leave game with confirmation ──
@@ -367,6 +375,8 @@ export default function App() {
     else if (la.type === 'snap_fail') { txt = `❌ ${nm} ${t.snappedWrong}`; detail = `${nm} yanlış eşleşme yaptı! 2 ceza kartı aldı.`; }
     else if (la.type === 'drew') { txt = `${nm} ${t.drewFromPile}`; detail = `${nm} çekme destesinden kart çekti.`; }
     else if (la.type === 'took_discard') { txt = `${nm} ${t.tookFromDiscard}`; detail = `${nm} atma destesinden kart aldı.`; }
+    else if (la.type === 'tikTik_claimed') { txt = `👊 ${nm} TIK TIK'a bastı — hamle yapıyor, bekle!`; detail = `${nm} TIK TIK hakkını kullandı. Kart seçiyor...`; }
+    else if (la.type === 'tikTik_late') { txt = `⏰ ${nm} TIK TIK ${lang === 'tr' ? 'için geç kaldı!' : 'was too late!'} (${la.winner} ${lang === 'tr' ? 'kazandı' : 'won'})`; detail = `${nm} TIK TIK'a basmak istedi ama ${la.winner} daha hızlıydı!`; }
     if (txt) {
       setLastMoveText(txt);
       setLastMoveDetail(detail);
@@ -440,7 +450,7 @@ export default function App() {
       await setGameState(roomCode, {
         status: 'peeking', round: (gameData?.round || 0) + 1, hands, drawPile, discardPile,
         currentPlayerIndex: startIdx, caboCallerId: null, caboFinalRound: false, caboTurnsLeft: 0,
-        lastAction: null, roundScores: null, turnCount: 0, tikTikUsedForCard: null,
+        lastAction: null, roundScores: null, turnCount: 0, tikTikUsedForCard: null, tikTikLock: null,
         players: players.map(p => ({ id: p.id, name: p.name || '', isBot: !!p.isBot })),
       });
       setScreen('game');
@@ -507,6 +517,7 @@ export default function App() {
   // ══════════════════════════════════════════
   const drawFromPile = async () => {
     if (!isMyTurn || phase !== 'start' || drawn) return;
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
     const gs = JSON.parse(JSON.stringify(gameData));
     if (!gs.drawPile?.length) { const top = gs.discardPile.pop(); gs.drawPile = shuffle(gs.discardPile); gs.discardPile = [top]; }
     const card = gs.drawPile.shift();
@@ -516,6 +527,7 @@ export default function App() {
 
   const takeFromDiscard = async () => {
     if (!isMyTurn || phase !== 'start' || !topDiscard) return;
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
     const gs = JSON.parse(JSON.stringify(gameData));
     const card = gs.discardPile.pop();
     gs.lastAction = { type: 'took_discard', pid, name: pname, ts: Date.now() };
@@ -530,7 +542,7 @@ export default function App() {
       const old = gs.hands[pid][idx]; gs.hands[pid][idx] = { ...drawn, position: idx }; gs.discardPile.push(old);
       gs.lastAction = { type: 'swap', pid, name: pname, slot: idx, discarded: old, ts: Date.now() };
       gs.turnCount = (gs.turnCount || 0) + 1;
-      gs.tikTikUsedForCard = null; // new card discarded, reset tik tik
+      gs.tikTikUsedForCard = null; gs.tikTikLock = null; // new card discarded, reset tik tik
       const adv = advTurn(gs); setDrawn(null); setPhase('start'); setHovIdx(null);
       if (adv.status === 'roundEnd') setRevealed(true);
       await save(adv); playSound('cardDeal');
@@ -545,7 +557,7 @@ export default function App() {
       gs.discardPile.push(drawn);
       gs.lastAction = { type: 'discard', pid, name: pname, discarded: drawn, ts: Date.now() };
       gs.turnCount = (gs.turnCount || 0) + 1;
-      gs.tikTikUsedForCard = null;
+      gs.tikTikUsedForCard = null; gs.tikTikLock = null;
       const ab = getCardAbility(drawn);
       if (ab && phase === 'drawn') {
         setAbility(ab); setAStep(0); setSelMy(null); setSelOp(null); setSelOc(null);
@@ -611,6 +623,9 @@ export default function App() {
             setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 4000);
             setTimeout(async () => { setSwapAnim(null); setPhase('start'); if (swapPendingRef.current) { await save(swapPendingRef.current); swapPendingRef.current = null; } playSound('cardDeal'); }, 5000);
           } else {
+            // Didn't swap, but tell everyone which card was looked at
+            const targetName = players.find(p => p.id === selOp)?.name || '?';
+            gs.lastAction = { type: 'peek_other', pid, name: pname, targetName, slot: selOc, ts: Date.now() };
             closePeek(); const adv = advTurn(gs); setAbility(null); setAStep(0); setPhase('start');
             if (adv.status === 'roundEnd') setRevealed(true); await save(adv); playSound('cardDeal');
           }
@@ -645,30 +660,51 @@ export default function App() {
   const startSnap = (targetPid) => {
     if (!gameData || gameData.status !== 'playing') return;
     if (!topDiscard) return;
-    // Check if TIK TIK already used for this discard
     if (gameData.tikTikUsedForCard === true) { notify(t.tikTikUsed); return; }
-    playSound('tikTik');
-    setSnapMode({ targetPid });
-  };
-
-  const executeSnap = (targetPid, cardIdx) => {
+    if (gameData.tikTikLock) {
+      // Someone else already clicked TIK TIK — broadcast "late" to everyone
+      const broadcastLate = async () => {
+        const gs = JSON.parse(JSON.stringify(gameData));
+        gs.lastAction = { type: 'tikTik_late', pid, name: pname, winner: gameData.tikTikLock, ts: Date.now() };
+        await save(gs);
+      };
+      broadcastLate();
+      return;
+    }
+    // Confirmation before TIK TIK
     askConfirm(t.confirmSnap, async () => {
       setConfirm(null);
       const gs = JSON.parse(JSON.stringify(gameData));
-      // Double-check: was TIK TIK already claimed?
-      if (gs.tikTikUsedForCard === true) { notify(t.tikTikUsed); setSnapMode(null); return; }
-      // Claim TIK TIK
+      if (gs.tikTikUsedForCard === true || gs.tikTikLock) {
+        // Lost the race after confirm — broadcast late
+        gs.lastAction = { type: 'tikTik_late', pid, name: pname, winner: gs.tikTikLock || '?', ts: Date.now() };
+        await save(gs);
+        return;
+      }
+      gs.tikTikLock = pname;
+      gs.lastAction = { type: 'tikTik_claimed', pid, name: pname, ts: Date.now() };
+      await save(gs);
+      playSound('tikTik');
+      setSnapMode({ targetPid });
+    });
+  };
+
+  const executeSnap = (targetPid, cardIdx) => {
+    const doSnap = async () => {
+      setConfirm(null);
+      const gs = JSON.parse(JSON.stringify(gameData));
+      if (gs.tikTikUsedForCard === true) { notify(t.tikTikUsed); setSnapMode(null); gs.tikTikLock = null; await save(gs); return; }
       gs.tikTikUsedForCard = true;
+      gs.tikTikLock = null; // Release lock
 
       const tc = gs.hands[targetPid]?.[cardIdx];
-      if (!tc) { setSnapMode(null); return; }
+      if (!tc) { setSnapMode(null); await save(gs); return; }
       const ld = gs.discardPile[gs.discardPile.length - 1];
 
       if (cardValue(tc) === cardValue(ld)) {
         playSound('snap');
-        gs.hands[targetPid][cardIdx] = null; // leave empty slot
+        gs.hands[targetPid][cardIdx] = null;
         if (targetPid !== pid) {
-          // Give one of my cards to opponent's empty slot
           const myActiveSlots = myHand.map((c, i) => c ? i : -1).filter(i => i >= 0);
           if (myActiveSlots.length > 0) {
             setSnapMode(null);
@@ -689,7 +725,8 @@ export default function App() {
         setSnapMode(null);
       }
       await save(gs);
-    });
+    };
+    doSnap();
   };
 
   const executeSnapGive = (myCardIdx) => {
@@ -719,7 +756,7 @@ export default function App() {
       await setGameState(roomCode, {
         status: 'peeking', round: (gameData?.round || 0) + 1, hands, drawPile, discardPile,
         currentPlayerIndex: startIdx, caboCallerId: null, caboFinalRound: false, caboTurnsLeft: 0,
-        lastAction: null, roundScores: null, turnCount: 0, tikTikUsedForCard: null,
+        lastAction: null, roundScores: null, turnCount: 0, tikTikUsedForCard: null, tikTikLock: null,
         players: players.map(p => ({ id: p.id, name: p.name || '', isBot: !!p.isBot })),
       });
     } catch (err) { console.error('NEXT ROUND ERROR:', err); notify('Error: ' + err.message); }
@@ -874,6 +911,13 @@ export default function App() {
             {/* CABO banner */}
             {gameData.caboFinalRound && <div style={{ textAlign: 'center', padding: '8px 16px', background: 'linear-gradient(135deg,rgba(201,48,44,.3),rgba(201,48,44,.15))', border: '1px solid rgba(201,48,44,.4)', borderRadius: 8, color: '#ff6b6b', fontWeight: 600, animation: 'cflash 1s ease-in-out infinite alternate' }}>{players.find(p => p.id === gameData.caboCallerId)?.name} {t.caboCall} — {t.caboLastRound}</div>}
 
+            {/* TIK TIK lock banner */}
+            {gameData.tikTikLock && !snapMode && (
+              <div style={{ textAlign: 'center', padding: '8px 16px', background: 'linear-gradient(135deg,rgba(243,156,18,.3),rgba(243,156,18,.15))', border: '1px solid rgba(243,156,18,.5)', borderRadius: 8, color: '#f39c12', fontWeight: 600, animation: 'cflash .8s ease-in-out infinite alternate' }}>
+                👊 {gameData.tikTikLock} TIK TIK {lang === 'tr' ? 'yapıyor — hamle bekle!' : 'in progress — wait!'}
+              </div>
+            )}
+
             {/* Last Move */}
             {/* Sliding action banner */}
             {actionBanner && <ActionBanner text={actionBanner} />}
@@ -896,7 +940,7 @@ export default function App() {
                       onClick={ci => { if (ability && ['peekOther', 'blindSwap', 'lookSwap'].includes(ability) && aStep === 0) { setSelOp(p.id); setSelOc(ci); } }}
                       hl={ci => selOp === p.id && selOc === ci} />
                     {gameData.status === 'playing' && !snapMode && !snapGiveMode && (
-                      <button className={`btn btik ${gameData.tikTikUsedForCard ? 'used' : ''}`} onClick={() => !gameData.tikTikUsedForCard && startSnap(p.id)}>{t.tikTik}</button>
+                      <button className={`btn btik ${gameData.tikTikUsedForCard || gameData.tikTikLock ? 'used' : ''}`} onClick={() => !(gameData.tikTikUsedForCard || gameData.tikTikLock) && startSnap(p.id)}>{t.tikTik}</button>
                     )}
                   </div>
                 );
@@ -958,7 +1002,7 @@ export default function App() {
 
               {/* TIK TIK for own cards */}
               {gameData.status === 'playing' && !snapMode && !snapGiveMode && !drawn && !ability && (
-                <button className={`btn btik ${gameData.tikTikUsedForCard ? 'used' : ''}`} onClick={() => !gameData.tikTikUsedForCard && startSnap(pid)}>{t.tikTik}</button>
+                <button className={`btn btik ${gameData.tikTikUsedForCard || gameData.tikTikLock ? 'used' : ''}`} onClick={() => !(gameData.tikTikUsedForCard || gameData.tikTikLock) && startSnap(pid)}>{t.tikTik}</button>
               )}
 
               {/* CABO */}
@@ -1001,8 +1045,8 @@ export default function App() {
             {iPeek && <div className="overlay" style={{ background: 'rgba(0,0,0,.75)' }} onClick={() => { setIPeek(false); setPeekCards({}); }}>
               <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 52, color: S.gbright }}>{iPeekT}</div>
               <div style={{ color: S.gold, fontFamily: "'Playfair Display',serif", fontSize: 20 }}>{t.lookingAtCards}</div>
-              <div style={{ color: S.dim, fontSize: 14 }}>{t.bottomCards}</div>
-              <div style={{ display: 'flex', gap: 16 }}>{myHand.slice(2, 4).map((c, i) => c && <Card key={i} card={c} faceUp anim="da" />)}</div>
+              <div style={{ color: S.dim, fontSize: 14 }}>📍 #1 ve #2 {lang === 'tr' ? 'numaralı kartların' : 'numbered cards'}</div>
+              <div style={{ display: 'flex', gap: 16 }}>{myHand.slice(2, 4).map((c, i) => c && <Card key={i} card={c} faceUp anim="da" cardNumber={i + 1} />)}</div>
               <div style={{ color: S.dim, fontStyle: 'italic', fontSize: 14, marginTop: 8 }}>{t.closeCard}</div>
             </div>}
 
