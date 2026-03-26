@@ -251,7 +251,6 @@ export default function App() {
   const botRef = useRef(null);
   const showChatRef = useRef(showChat);
   const lastChatRef = useRef(0);
-  const lastPeekRoundRef = useRef(0);
   const peekStartedRef = useRef(false);
   const lastSwapTsRef = useRef(0);
   const lastActionTsRef = useRef(0);
@@ -483,23 +482,38 @@ export default function App() {
     }
   };
 
-  // ── Peek — triggers for ALL players when status becomes 'peeking' and hands are ready ──
+  // ── Peek — triggers for ALL players when status becomes 'peeking' ──
+  const prevStatusRef = useRef(null);
   useEffect(() => {
-    if (gameData?.status === 'peeking' && gameData?.round > 0 && gameData?.hands?.[pid] && gameData.round !== lastPeekRoundRef.current) {
-      lastPeekRoundRef.current = gameData.round;
+    const prevStatus = prevStatusRef.current;
+    const curStatus = gameData?.status;
+    prevStatusRef.current = curStatus;
+
+    // Trigger peek when status CHANGES TO 'peeking' (not just when it IS peeking)
+    if (curStatus === 'peeking' && prevStatus !== 'peeking' && gameData?.hands?.[pid]) {
+      console.log('PEEK TRIGGERED for', pid, 'round', gameData.round);
       setIPeek(true); setIPeekT(15); setDrawn(null); setPhase('start'); setAbility(null); setRevealed(false);
       setTempCard(null); setSnapMode(null); setSnapGiveMode(false); setLastMoveText('');
-      setPeekCards({ 2: true, 3: true }); // immediately set peek cards
+      setPeekCards({ 2: true, 3: true });
       playSound('cardDeal');
     }
-  }, [gameData?.status, gameData?.round, gameData?.hands, pid]);
+    // Also handle case where hands arrive AFTER status changed to peeking
+    if (curStatus === 'peeking' && prevStatus === 'peeking' && !iPeek && gameData?.hands?.[pid] && iPeekT === 15) {
+      // Hands just arrived, peek not yet started
+      console.log('PEEK TRIGGERED (delayed hands) for', pid);
+      setIPeek(true); setIPeekT(15);
+      setPeekCards({ 2: true, 3: true });
+      playSound('cardDeal');
+    }
+  }, [gameData?.status, gameData?.hands, pid]);
 
+  // Peek countdown
   useEffect(() => {
     if (iPeek && iPeekT > 0) { const tm = setTimeout(() => setIPeekT(v => v - 1), 1000); return () => clearTimeout(tm); }
     if (iPeek && iPeekT === 0) { setIPeek(false); setPeekCards({}); }
   }, [iPeek, iPeekT]);
-  useEffect(() => { if (iPeek && gameData?.hands?.[pid]) setPeekCards({ 2: true, 3: true }); }, [iPeek, pid, gameData?.hands]);
 
+  // Host transitions peeking → playing after their peek ends
   useEffect(() => { if (iPeek) peekStartedRef.current = true; }, [iPeek]);
   useEffect(() => {
     if (gameData?.status === 'peeking' && !iPeek && peekStartedRef.current && isHost) {
