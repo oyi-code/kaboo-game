@@ -44,10 +44,12 @@ function Card({ card, faceUp, highlighted, onClick, small, disabled, peeking, an
 // ══════════════════════════════════════════
 // HAND GRID — 2x2 base, penalties on top, stable positions (null = empty slot)
 // ══════════════════════════════════════════
-function HandGrid({ cards, small, faceUp, peek, hl, onClick, anim, hoveredIdx, onHoverIdx, onLeaveIdx, hoverLabelText, glowIdx }) {
+function HandGrid({ cards, small, faceUp, peek, hl, onClick, anim, hoveredIdx, onHoverIdx, onLeaveIdx, hoverLabelText, glowIdx, flipped }) {
   // Cards array: [0]=top-left, [1]=top-right, [2]=bottom-left, [3]=bottom-right
-  // Display numbers: bottom row (idx 2,3) = #1,#2 (yakın/görülen), top row (idx 0,1) = #3,#4 (uzak/görülmeyen)
-  const displayNum = { 0: 3, 1: 4, 2: 1, 3: 2 }; // idx → display number
+  // Display numbers are ALWAYS the same for everyone:
+  //   idx 2,3 = #1,#2 (owner's near cards, the ones they peek at start)
+  //   idx 0,1 = #3,#4 (owner's far cards)
+  const displayNum = { 0: 3, 1: 4, 2: 1, 3: 2 };
   const base = [cards[0] || null, cards[1] || null, cards[2] || null, cards[3] || null];
   const pen = cards.slice(4);
   const penRows = [];
@@ -57,7 +59,7 @@ function HandGrid({ cards, small, faceUp, peek, hl, onClick, anim, hoveredIdx, o
 
   const rc = (c, idx) => {
     if (!c) return <div key={idx} style={{ width: small ? 44 : 62, height: small ? 62 : 88, border: '2px dashed rgba(255,255,255,.1)', borderRadius: 7, opacity: 0.3 }} />;
-    const dn = idx < 4 ? displayNum[idx] : idx + 1; // penalty cards: #5,#6,...
+    const dn = idx < 4 ? displayNum[idx] : idx + 1;
     return <Card key={idx} card={c} faceUp={faceUp} small={small} peeking={peek?.[idx]}
       highlighted={hl?.(idx) || hoveredIdx === idx} onClick={() => onClick?.(idx)} anim={anim}
       style={anim ? { animationDelay: `${idx * 0.08}s` } : undefined}
@@ -67,13 +69,28 @@ function HandGrid({ cards, small, faceUp, peek, hl, onClick, anim, hoveredIdx, o
       onHover={() => onHoverIdx?.(idx)} onLeave={() => onLeaveIdx?.()} />;
   };
 
+  if (flipped) {
+    // Flipped: opponent view — their #1,#2 (idx 2,3) on top, #3,#4 (idx 0,1) on bottom, penalties at bottom
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: vg }}>
+        {/* Top: opponent's #1,#2 (their near cards) */}
+        <div style={{ display: 'flex', gap: g }}>{[2, 3].map(i => rc(base[i], i))}</div>
+        {/* Bottom: opponent's #3,#4 (their far cards) */}
+        <div style={{ display: 'flex', gap: g }}>{[0, 1].map(i => rc(base[i], i))}</div>
+        {/* Penalty cards at bottom (farthest from viewer) */}
+        {penRows.map((r, ri) => <div key={`p${ri}`} style={{ display: 'flex', gap: g }}>{r.map((c, ci) => rc(c, 4 + ri * 2 + ci))}</div>)}
+      </div>
+    );
+  }
+
+  // Normal: own view — #3,#4 on top (far), #1,#2 on bottom (near)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: vg }}>
-      {/* Penalty cards (top, farthest) */}
+      {/* Penalty cards on top (farthest) */}
       {penRows.map((r, ri) => <div key={`p${ri}`} style={{ display: 'flex', gap: g }}>{r.map((c, ci) => rc(c, 4 + ri * 2 + ci))}</div>)}
-      {/* Top row: idx 0,1 → #3,#4 (uzak) */}
+      {/* Top row: #3,#4 (uzak) */}
       <div style={{ display: 'flex', gap: g }}>{[0, 1].map(i => rc(base[i], i))}</div>
-      {/* Bottom row: idx 2,3 → #1,#2 (yakın, oyuncuya en yakın) */}
+      {/* Bottom row: #1,#2 (yakın) */}
       <div style={{ display: 'flex', gap: g }}>{[2, 3].map(i => rc(base[i], i))}</div>
     </div>
   );
@@ -935,7 +952,7 @@ export default function App() {
                 return (
                   <div key={p.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 10px', background: 'rgba(0,0,0,.15)', border: `2px solid ${active ? S.gbright : 'rgba(255,255,255,.08)'}`, borderRadius: 12, minWidth: 110 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: active ? S.gbright : S.dim }}>{active ? '⏳ ' : ''}{p.name}</div>
-                    <HandGrid cards={hand} small faceUp={revealed}
+                    <HandGrid cards={hand} small faceUp={revealed} flipped
                       glowIdx={glowSlot?.pid === p.id ? glowSlot.slot : null}
                       onClick={ci => { if (ability && ['peekOther', 'blindSwap', 'lookSwap'].includes(ability) && aStep === 0) { setSelOp(p.id); setSelOc(ci); } }}
                       hl={ci => selOp === p.id && selOc === ci} />
@@ -956,6 +973,7 @@ export default function App() {
                   {snapMode.targetPid === pid ? `${pname} ${t.you}` : players.find(p => p.id === snapMode.targetPid)?.name}
                 </div>
                 <HandGrid cards={gameData.hands?.[snapMode.targetPid] || []} faceUp={false}
+                  flipped={snapMode.targetPid !== pid}
                   hl={ci => hovIdx === ci} hoveredIdx={hovIdx}
                   onHoverIdx={ci => setHovIdx(ci)} onLeaveIdx={() => setHovIdx(null)}
                   hoverLabelText={t.selectedCard}
@@ -1073,7 +1091,7 @@ export default function App() {
               {['peekOther', 'blindSwap', 'lookSwap'].includes(ability) && !selOp && aStep === 0 && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>{others.map(p => <button key={p.id} className="btn bsm bs" onClick={() => setSelOp(p.id)}>{p.name}</button>)}</div>}
               {selOp && (['peekOther', 'blindSwap'].includes(ability) || (ability === 'lookSwap' && aStep === 0)) && (
                 <div><div style={{ color: S.light, fontSize: 14, fontWeight: 600, textAlign: 'center', marginBottom: 6 }}>{players.find(p => p.id === selOp)?.name}</div>
-                <HandGrid cards={gameData.hands[selOp] || []} faceUp={false} hl={ci => selOc === ci || hovIdx === ci} hoveredIdx={hovIdx} onHoverIdx={ci => setHovIdx(ci)} onLeaveIdx={() => setHovIdx(null)} hoverLabelText={t.selectedCard} onClick={ci => { setSelOc(ci); setHovIdx(null); }} /></div>
+                <HandGrid cards={gameData.hands[selOp] || []} faceUp={false} flipped hl={ci => selOc === ci || hovIdx === ci} hoveredIdx={hovIdx} onHoverIdx={ci => setHovIdx(ci)} onLeaveIdx={() => setHovIdx(null)} hoverLabelText={t.selectedCard} onClick={ci => { setSelOc(ci); setHovIdx(null); }} /></div>
               )}
               {ability === 'peekSelf' && <div><div style={{ color: S.light, fontSize: 14, fontWeight: 600, textAlign: 'center', marginBottom: 6 }}>{pname}</div><HandGrid cards={myHand} faceUp={false} hl={ci => selMy === ci || hovIdx === ci} hoveredIdx={hovIdx} onHoverIdx={ci => setHovIdx(ci)} onLeaveIdx={() => setHovIdx(null)} hoverLabelText={t.selectedCard} onClick={ci => { setSelMy(ci); setHovIdx(null); }} /></div>}
               {ability === 'blindSwap' && selOp && selOc !== null && <div><div style={{ color: S.dim, marginBottom: 6, fontSize: 13, textAlign: 'center' }}>{t.selectYourCard}</div><HandGrid cards={myHand} faceUp={false} hl={ci => selMy === ci || hovIdx === ci} hoveredIdx={hovIdx} onHoverIdx={ci => setHovIdx(ci)} onLeaveIdx={() => setHovIdx(null)} hoverLabelText={t.selectedCard} onClick={ci => { setSelMy(ci); setHovIdx(null); }} /></div>}
@@ -1091,7 +1109,7 @@ export default function App() {
                 <thead><tr><th style={{ padding: '8px 16px', borderBottom: '1px solid rgba(212,168,67,.15)', fontFamily: "'Playfair Display',serif", color: S.gold, fontSize: 14, textAlign: 'left' }}>{t.players}</th><th style={{ padding: '8px 16px', borderBottom: '1px solid rgba(212,168,67,.15)', fontFamily: "'Playfair Display',serif", color: S.gold, fontSize: 14, textAlign: 'center' }}>{t.round} {gameData.round}</th><th style={{ padding: '8px 16px', borderBottom: '1px solid rgba(212,168,67,.15)', fontFamily: "'Playfair Display',serif", color: S.gold, fontSize: 14, textAlign: 'center' }}>{t.total}</th></tr></thead>
                 <tbody>{[...players].sort((a, b) => (scores[a.id] || 0) - (scores[b.id] || 0)).map((p, i) => <tr key={p.id} style={{ background: i === 0 ? 'rgba(212,168,67,.15)' : 'transparent' }}><td style={{ padding: '8px 16px', borderBottom: '1px solid rgba(212,168,67,.08)' }}>{i === 0 ? '🏆 ' : ''}{p.name} {p.id === pid ? t.you : ''}</td><td style={{ padding: '8px 16px', borderBottom: '1px solid rgba(212,168,67,.08)', textAlign: 'center', fontFamily: "'JetBrains Mono',monospace" }}>{gameData.roundScores[p.id]}</td><td style={{ padding: '8px 16px', borderBottom: '1px solid rgba(212,168,67,.08)', textAlign: 'center', fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{scores[p.id] || 0}</td></tr>)}</tbody>
               </table>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>{players.map(p => <div key={p.id} style={{ textAlign: 'center' }}><div style={{ fontSize: 12, marginBottom: 4, color: S.dim }}>{p.name}</div><HandGrid cards={gameData.hands[p.id] || []} small faceUp /></div>)}</div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>{players.map(p => <div key={p.id} style={{ textAlign: 'center' }}><div style={{ fontSize: 12, marginBottom: 4, color: S.dim }}>{p.name}</div><HandGrid cards={gameData.hands[p.id] || []} small faceUp flipped={p.id !== pid} /></div>)}</div>
               {isHost && <button className="btn bp" style={{ maxWidth: 240 }} onClick={nextRound}>{t.nextRound}</button>}
             </div>}
 
