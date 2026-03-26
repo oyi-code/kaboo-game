@@ -482,30 +482,27 @@ export default function App() {
     }
   };
 
-  // ── Peek — triggers for ALL players when status becomes 'peeking' ──
-  const prevStatusRef = useRef(null);
-  useEffect(() => {
-    const prevStatus = prevStatusRef.current;
-    const curStatus = gameData?.status;
-    prevStatusRef.current = curStatus;
+  // ── Peek — triggers for ALL players. Uses round number to ensure each player peeks once per round ──
+  const peekedRoundRef = useRef(0); // which round we already peeked for
 
-    // Trigger peek when status CHANGES TO 'peeking' (not just when it IS peeking)
-    if (curStatus === 'peeking' && prevStatus !== 'peeking' && gameData?.hands?.[pid]) {
-      console.log('PEEK TRIGGERED for', pid, 'round', gameData.round);
+  useEffect(() => {
+    if (!gameData?.hands?.[pid] || !gameData?.round) return;
+    const curStatus = gameData.status;
+    const curRound = gameData.round;
+
+    // Already peeked for this round? Skip
+    if (peekedRoundRef.current >= curRound) return;
+
+    // Trigger peek if status is 'peeking' OR 'playing' (in case we missed 'peeking')
+    if (curStatus === 'peeking' || curStatus === 'playing') {
+      console.log('PEEK TRIGGERED for', pid, 'round', curRound, 'status', curStatus);
+      peekedRoundRef.current = curRound;
       setIPeek(true); setIPeekT(15); setDrawn(null); setPhase('start'); setAbility(null); setRevealed(false);
       setTempCard(null); setSnapMode(null); setSnapGiveMode(false); setLastMoveText('');
       setPeekCards({ 2: true, 3: true });
       playSound('cardDeal');
     }
-    // Also handle case where hands arrive AFTER status changed to peeking
-    if (curStatus === 'peeking' && prevStatus === 'peeking' && !iPeek && gameData?.hands?.[pid] && iPeekT === 15) {
-      // Hands just arrived, peek not yet started
-      console.log('PEEK TRIGGERED (delayed hands) for', pid);
-      setIPeek(true); setIPeekT(15);
-      setPeekCards({ 2: true, 3: true });
-      playSound('cardDeal');
-    }
-  }, [gameData?.status, gameData?.hands, pid]);
+  }, [gameData?.status, gameData?.round, gameData?.hands, pid]);
 
   // Peek countdown
   useEffect(() => {
