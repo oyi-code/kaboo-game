@@ -483,15 +483,16 @@ export default function App() {
     }
   };
 
-  // ── Peek ──
+  // ── Peek — triggers for ALL players when status becomes 'peeking' and hands are ready ──
   useEffect(() => {
-    if (gameData?.status === 'peeking' && gameData?.round > 0 && gameData.round !== lastPeekRoundRef.current) {
+    if (gameData?.status === 'peeking' && gameData?.round > 0 && gameData?.hands?.[pid] && gameData.round !== lastPeekRoundRef.current) {
       lastPeekRoundRef.current = gameData.round;
       setIPeek(true); setIPeekT(15); setDrawn(null); setPhase('start'); setAbility(null); setRevealed(false);
       setTempCard(null); setSnapMode(null); setSnapGiveMode(false); setLastMoveText('');
+      setPeekCards({ 2: true, 3: true }); // immediately set peek cards
       playSound('cardDeal');
     }
-  }, [gameData?.status, gameData?.round]);
+  }, [gameData?.status, gameData?.round, gameData?.hands, pid]);
 
   useEffect(() => {
     if (iPeek && iPeekT > 0) { const tm = setTimeout(() => setIPeekT(v => v - 1), 1000); return () => clearTimeout(tm); }
