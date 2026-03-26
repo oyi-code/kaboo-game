@@ -380,15 +380,17 @@ export default function App() {
     lastActionTsRef.current = gameData.lastAction.ts;
     const la = gameData.lastAction;
     const nm = la.name || '???';
+    // Convert data index to display number: idx 0→#3, 1→#4, 2→#1, 3→#2, 4+→#5+
+    const dn = (idx) => { const map = { 0: 3, 1: 4, 2: 1, 3: 2 }; return idx < 4 ? map[idx] : idx + 1; };
     let txt = '';
     let detail = '';
     if (la.type === 'discard') { txt = `${nm} ${t.discardedCard}`; detail = `${nm} çektiği kartı atma destesine attı.`; }
-    else if (la.type === 'swap') { txt = `${nm} ${t.placedAtSlot.replace('{slot}', la.slot + 1)}`; detail = `${nm} çektiği kartı #${la.slot + 1} numaraya koydu, eski kartı attı.`; }
+    else if (la.type === 'swap') { txt = `${nm} ${t.placedAtSlot.replace('{slot}', dn(la.slot))}`; detail = `${nm} çektiği kartı #${dn(la.slot)} numaraya koydu, eski kartı attı.`; }
     else if (la.type === 'cabo') { txt = `🚨 ${nm} ${t.calledCabo}`; detail = `${nm} KABOO dedi! Diğer oyuncular 1'er tur daha oynayacak.`; }
-    else if (la.type === 'peek_self') { txt = `👁️ ${nm} ${t.peekedSelf.replace('{slot}', la.slot + 1)}`; detail = `${nm} kendi #${la.slot + 1} numaralı kartına baktı.`; }
-    else if (la.type === 'peek_other') { txt = `👁️ ${nm} ${t.peekedOther.replace('{target}', la.targetName || '?').replace('{slot}', la.slot + 1)}`; detail = `${nm}, ${la.targetName || '?'} oyuncusunun #${la.slot + 1} numaralı kartına baktı.`; }
-    else if (la.type === 'swap_anim') { txt = `🔄 ${t.swappedCards.replace('{p1}', la.p1).replace('{c1}', la.c1 + 1).replace('{p2}', la.p2).replace('{c2}', la.c2 + 1)}`; detail = `${la.p1} #${la.c1 + 1} kartı ile ${la.p2} #${la.c2 + 1} kartı değiştirildi!`; }
-    else if (la.type === 'snap_ok') { txt = `👊 ${nm} TIK TIK! #${la.slot + 1} ${t.snappedCard.replace('{slot}', la.slot + 1)}`; detail = `${nm} TIK TIK ile #${la.slot + 1} numaralı kartı eşleştirdi ve çıkardı!`; }
+    else if (la.type === 'peek_self') { txt = `👁️ ${nm} ${t.peekedSelf.replace('{slot}', dn(la.slot))}`; detail = `${nm} kendi #${dn(la.slot)} numaralı kartına baktı.`; }
+    else if (la.type === 'peek_other') { txt = `👁️ ${nm} ${t.peekedOther.replace('{target}', la.targetName || '?').replace('{slot}', dn(la.slot))}`; detail = `${nm}, ${la.targetName || '?'} oyuncusunun #${dn(la.slot)} numaralı kartına baktı.`; }
+    else if (la.type === 'swap_anim') { txt = `🔄 ${t.swappedCards.replace('{p1}', la.p1).replace('{c1}', dn(la.c1)).replace('{p2}', la.p2).replace('{c2}', dn(la.c2))}`; detail = `${la.p1} #${dn(la.c1)} kartı ile ${la.p2} #${dn(la.c2)} kartı değiştirildi!`; }
+    else if (la.type === 'snap_ok') { txt = `👊 ${nm} TIK TIK! #${dn(la.slot)} ${t.snappedCard.replace('{slot}', dn(la.slot))}`; detail = `${nm} TIK TIK ile #${dn(la.slot)} numaralı kartı eşleştirdi ve çıkardı!`; }
     else if (la.type === 'snap_fail') { txt = `❌ ${nm} ${t.snappedWrong}`; detail = `${nm} yanlış eşleşme yaptı! 2 ceza kartı aldı.`; }
     else if (la.type === 'drew') { txt = `${nm} ${t.drewFromPile}`; detail = `${nm} çekme destesinden kart çekti.`; }
     else if (la.type === 'took_discard') { txt = `${nm} ${t.tookFromDiscard}`; detail = `${nm} atma destesinden kart aldı.`; }
@@ -553,7 +555,9 @@ export default function App() {
 
   const keepDrawn = (idx) => {
     if (!drawn) return;
-    askConfirm(t.confirmKeep.replace('{slot}', idx + 1), async () => {
+    const dnMap = { 0: 3, 1: 4, 2: 1, 3: 2 };
+    const displaySlot = idx < 4 ? dnMap[idx] : idx + 1;
+    askConfirm(t.confirmKeep.replace('{slot}', displaySlot), async () => {
       setConfirm(null);
       const gs = JSON.parse(JSON.stringify(gameData));
       const old = gs.hands[pid][idx]; gs.hands[pid][idx] = { ...drawn, position: idx }; gs.discardPile.push(old);
@@ -1034,30 +1038,33 @@ export default function App() {
             {/* ═══ OVERLAYS ═══ */}
 
             {/* Swap animation */}
-            {swapAnim && (
+            {swapAnim && (() => {
+              const dn = (idx) => { const map = { 0: 3, 1: 4, 2: 1, 3: 2 }; return idx < 4 ? map[idx] : idx + 1; };
+              return (
               <div className="overlay" style={{ background: 'rgba(0,0,0,.92)', zIndex: 70 }}>
                 <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 40, color: S.gbright, textAlign: 'center', letterSpacing: 6, textShadow: '0 0 30px rgba(212,168,67,.4)' }}>🔄 {t.swapAnimation}</div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 60, marginTop: 32, position: 'relative', minHeight: 200 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, transform: swapAnim.phase === 'sliding' ? 'translateX(100px)' : 'translateX(0)', transition: 'transform 3s cubic-bezier(0.25,0.1,0.25,1)' }}>
                     <div style={{ fontSize: 16, fontWeight: 700, color: S.gbright, padding: '4px 12px', background: 'rgba(212,168,67,.15)', borderRadius: 6, border: '1px solid rgba(212,168,67,.3)' }}>{swapAnim.p1}</div>
                     <Card card={{ rank: '?', suit: '?' }} faceUp={false} />
-                    <div style={{ fontSize: 13, color: S.gold, fontFamily: "'JetBrains Mono',monospace" }}>Kart #{swapAnim.c1 + 1}</div>
+                    <div style={{ fontSize: 13, color: S.gold, fontFamily: "'JetBrains Mono',monospace" }}>Kart #{dn(swapAnim.c1)}</div>
                   </div>
                   <div style={{ fontSize: 40, color: S.gold, position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', textShadow: '0 0 20px rgba(212,168,67,.5)' }}>⇄</div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, transform: swapAnim.phase === 'sliding' ? 'translateX(-100px)' : 'translateX(0)', transition: 'transform 3s cubic-bezier(0.25,0.1,0.25,1)' }}>
                     <div style={{ fontSize: 16, fontWeight: 700, color: S.gbright, padding: '4px 12px', background: 'rgba(212,168,67,.15)', borderRadius: 6, border: '1px solid rgba(212,168,67,.3)' }}>{swapAnim.p2}</div>
                     <Card card={{ rank: '?', suit: '?' }} faceUp={false} />
-                    <div style={{ fontSize: 13, color: S.gold, fontFamily: "'JetBrains Mono',monospace" }}>Kart #{swapAnim.c2 + 1}</div>
+                    <div style={{ fontSize: 13, color: S.gold, fontFamily: "'JetBrains Mono',monospace" }}>Kart #{dn(swapAnim.c2)}</div>
                   </div>
                 </div>
                 {swapAnim.phase === 'done' && (
                   <div style={{ marginTop: 24, padding: '14px 32px', background: 'rgba(212,168,67,.12)', border: `2px solid ${S.gold}`, borderRadius: 12, textAlign: 'center', animation: 'din .4s ease-out' }}>
-                    <div style={{ fontSize: 20, color: S.gbright, fontWeight: 700, letterSpacing: 2 }}>{swapAnim.p1} #{swapAnim.c1 + 1} ⇄ {swapAnim.p2} #{swapAnim.c2 + 1}</div>
+                    <div style={{ fontSize: 20, color: S.gbright, fontWeight: 700, letterSpacing: 2 }}>{swapAnim.p1} #{dn(swapAnim.c1)} ⇄ {swapAnim.p2} #{dn(swapAnim.c2)}</div>
                     <div style={{ fontSize: 15, color: S.dim, marginTop: 6 }}>{t.cardsSwapped}</div>
                   </div>
                 )}
               </div>
-            )}
+              );
+            })()}
 
             {/* Initial peek */}
             {iPeek && <div className="overlay" style={{ background: 'rgba(0,0,0,.75)' }} onClick={() => { setIPeek(false); setPeekCards({}); }}>
