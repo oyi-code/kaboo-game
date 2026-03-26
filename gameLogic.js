@@ -26,36 +26,33 @@ export function shuffle(arr) {
   return a;
 }
 
-export function cardValue(card) {
-  if (!card) return 0;
-  if (card.rank === 'JK') return -1;
-  if (card.rank === 'K') {
-    return (card.suit === '♠' || card.suit === '♣') ? 13 : 0;
-  }
-  if (card.rank === 'Q') return 12;
-  if (card.rank === 'J') return 11;
-  if (card.rank === 'A') return 1;
-  return parseInt(card.rank);
+export function cardValue(c) {
+  if (!c) return 0;
+  if (c.rank === 'JK') return -1;
+  if (c.rank === 'K') return (c.suit === '♠' || c.suit === '♣') ? 13 : 0; // black=13, red=0
+  if (c.rank === 'Q') return 12;
+  if (c.rank === 'J') return 11;
+  if (c.rank === 'A') return 1;
+  return parseInt(c.rank);
 }
 
-export function isRedSuit(suit) {
-  return suit === '♥' || suit === '♦';
-}
+export function isRedSuit(s) { return s === '♥' || s === '♦'; }
 
-export function getCardAbility(card) {
-  if (!card) return null;
-  if (card.rank === '7' || card.rank === '8') return 'peekSelf';
-  if (card.rank === '9' || card.rank === '10') return 'peekOther';
-  if (card.rank === 'Q' || card.rank === 'J') return 'blindSwap';
-  if (card.rank === 'K' && !isRedSuit(card.suit)) return 'lookSwap';
+// Abilities activate ONLY when a card is DISCARDED (atıldığında)
+export function getCardAbility(c) {
+  if (!c) return null;
+  if (c.rank === '7' || c.rank === '8') return 'peekSelf';       // Kendine Bak
+  if (c.rank === '9' || c.rank === '10') return 'peekOther';     // Başkasına Bak
+  if (c.rank === 'Q' || c.rank === 'J') return 'blindSwap';      // Kör Değişim
+  if (c.rank === 'K' && !isRedSuit(c.suit)) return 'lookSwap';   // Bak & Değiştir (only black K)
   return null;
 }
 
 export function generateRoomCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
+  const ch = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let c = '';
+  for (let i = 0; i < 5; i++) c += ch[Math.floor(Math.random() * ch.length)];
+  return c;
 }
 
 export function generatePlayerId() {
@@ -65,212 +62,199 @@ export function generatePlayerId() {
 export function dealCards(playerIds) {
   const deck = createDeck();
   const hands = {};
-  let deckIdx = 0;
-
+  let idx = 0;
   for (const pid of playerIds) {
     hands[pid] = [];
     for (let i = 0; i < 4; i++) {
-      hands[pid].push({ ...deck[deckIdx], position: i });
-      deckIdx++;
+      hands[pid].push({ ...deck[idx], position: i });
+      idx++;
     }
   }
-
-  const discardCard = deck[deckIdx];
-  deckIdx++;
-  const drawPile = deck.slice(deckIdx);
-
-  return { hands, drawPile, discardPile: [discardCard] };
+  const discardCard = deck[idx]; idx++;
+  return { hands, drawPile: deck.slice(idx), discardPile: [discardCard] };
 }
 
-// Sound effects
-const AudioCtx = typeof AudioContext !== 'undefined' ? AudioContext : typeof webkitAudioContext !== 'undefined' ? webkitAudioContext : null;
-let audioCtx = null;
-
-function getAudioCtx() {
-  if (!audioCtx && AudioCtx) {
-    audioCtx = new AudioCtx();
-  }
-  return audioCtx;
-}
-
+// Sound
+const AC = typeof AudioContext !== 'undefined' ? AudioContext : typeof webkitAudioContext !== 'undefined' ? webkitAudioContext : null;
+let ac = null;
 export function playSound(type) {
-  const ctx = getAudioCtx();
-  if (!ctx) return;
+  if (!AC) return; if (!ac) ac = new AC();
   try {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    gain.gain.value = 0.12;
-
-    const sounds = {
-      cardFlip: { freq: 800, dur: 0.1, type: 'sine' },
-      cardDeal: { freq: 500, dur: 0.15, type: 'sine' },
-      cabo: { freq: 440, dur: 0.5, type: 'sawtooth', ramp: 880 },
-      snap: { freq: 600, dur: 0.08, type: 'square' },
-      success: { freq: 523, dur: 0.4, type: 'sine' },
-      fail: { freq: 200, dur: 0.3, type: 'sawtooth' },
-      chat: { freq: 1200, dur: 0.06, type: 'sine', vol: 0.06 },
-      join: { freq: 660, dur: 0.2, type: 'sine' },
-      turn: { freq: 880, dur: 0.15, type: 'sine' },
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.connect(g); g.connect(ac.destination); g.gain.value = 0.1;
+    const m = {
+      cardFlip: { f: 800, d: .1 }, cardDeal: { f: 500, d: .15 },
+      cabo: { f: 440, d: .5, t: 'sawtooth', r: 880 },
+      snap: { f: 600, d: .08, t: 'square' },
+      fail: { f: 200, d: .3, t: 'sawtooth' },
+      chat: { f: 1200, d: .06, v: .05 },
+      join: { f: 660, d: .2 },
+      turn: { f: 880, d: .15 },
+      tikTik: { f: 1000, d: .05, t: 'square' },
     };
-
-    const s = sounds[type] || sounds.cardFlip;
-    osc.type = s.type || 'sine';
-    osc.frequency.value = s.freq;
-    if (s.ramp) osc.frequency.linearRampToValueAtTime(s.ramp, ctx.currentTime + s.dur);
-    gain.gain.value = s.vol || 0.12;
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + s.dur);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + s.dur);
-  } catch (e) { /* silent */ }
+    const s = m[type] || m.cardFlip;
+    o.type = s.t || 'sine'; o.frequency.value = s.f;
+    if (s.r) o.frequency.linearRampToValueAtTime(s.r, ac.currentTime + s.d);
+    g.gain.value = s.v || 0.1;
+    g.gain.exponentialRampToValueAtTime(0.01, ac.currentTime + s.d);
+    o.start(ac.currentTime); o.stop(ac.currentTime + s.d);
+  } catch (e) { }
 }
 
-// Translations
 export const LANG = {
   tr: {
-    title: 'KABOO',
-    subtitle: 'Klasik Kart Oyunu',
-    createRoom: 'Oda Oluştur',
-    joinRoom: 'Odaya Katıl',
-    enterName: 'Adını gir',
-    enterRoomCode: 'Oda kodu gir',
-    join: 'Katıl',
-    back: 'Geri',
-    waiting: 'Oyuncular bekleniyor...',
-    startGame: 'Oyunu Başlat',
-    players: 'Oyuncular',
-    targetScore: 'Hedef Puan',
-    roomCode: 'Oda Kodu',
-    copyCode: 'Kopyala',
-    copied: 'Kopyalandı!',
-    round: 'El',
-    scores: 'Puanlar',
-    yourTurn: 'Senin sıran!',
-    notYourTurn: "'in sırası",
-    drawPile: 'Çekme Destesi',
-    discardPile: 'Atma Destesi',
-    cabo: 'CABO!',
-    caboCall: 'CABO dedi!',
-    keepCard: 'Kartı al',
+    title: 'KABOO', subtitle: 'Klasik Kart Oyunu',
+    createRoom: 'Oda Oluştur', joinRoom: 'Odaya Katıl',
+    enterName: 'Adını gir', enterRoomCode: 'Oda kodu gir',
+    back: 'Geri', waiting: 'Oyuncular bekleniyor...',
+    startGame: 'Oyunu Başlat', players: 'Oyuncular',
+    targetScore: 'Hedef Puan', roomCode: 'Oda Kodu',
+    copyCode: 'Kopyala', copied: 'Kopyalandı!',
+    round: 'El', yourTurn: '🎯 Senin sıran!',
+    notYourTurn: "'in sırası", waitingTurn: 'Sıranı bekle...',
+    drawPile: 'Çekme Destesi', discardPile: 'Atma Destesi',
+    cabo: 'KABOO!', caboCall: 'KABOO dedi!',
     discardCard: 'Kartı at',
-    useAbility: 'Yeteneği kullan',
-    snap: 'Aklımda! 👊',
-    peekSelf: 'Kendine Bak',
-    peekOther: 'Başkasına Bak',
-    blindSwap: 'Kör Değişim',
-    lookSwap: 'Bak & Değiştir',
+    tikTik: 'TIK TIK! 👊',
+    peekSelf: 'Kendine Bak', peekOther: 'Başkasına Bak',
+    blindSwap: 'Kör Değişim', lookSwap: 'Bak & Değiştir',
     selectYourCard: 'Kendi kartını seç',
     selectOtherCard: 'Rakip kartı seç',
     selectOtherPlayer: 'Bir oyuncu seç',
-    confirm: 'Onayla',
-    cancel: 'İptal',
-    skip: 'Geç',
-    revealCards: 'Kartlar Açılıyor!',
-    roundOver: 'El Bitti!',
-    gameOver: 'Oyun Bitti!',
-    winner: 'Kazanan',
-    nextRound: 'Sonraki El',
-    newGame: 'Yeni Oyun',
-    leave: 'Ayrıl',
-    chat: 'Sohbet',
-    sendMsg: 'Mesaj gönder...',
-    send: 'Gönder',
-    lookingAtCards: 'Kartlarına bakıyor...',
-    timeLeft: 'sn kaldı',
-    closeCard: 'Kapatmak için tıkla',
+    confirm: 'Onayla', cancel: 'İptal', skip: 'Geç',
+    roundOver: 'El Bitti!', gameOver: 'Oyun Bitti!',
+    nextRound: 'Sonraki El', newGame: 'Yeni Oyun',
+    chat: 'Sohbet', sendMsg: 'Mesaj gönder...', send: 'Gönder',
+    lookingAtCards: 'Alt kartlarına bak!',
+    timeLeft: 'sn', closeCard: 'Kapatmak için tıkla',
     minPlayers: 'En az 2 oyuncu gerekli',
-    roomFull: 'Oda dolu!',
-    roomNotFound: 'Oda bulunamadı!',
-    nameRequired: 'İsim gerekli!',
-    codeRequired: 'Oda kodu gerekli!',
+    roomFull: 'Oda dolu!', roomNotFound: 'Oda bulunamadı!',
+    nameRequired: 'İsim gerekli!', codeRequired: 'Oda kodu gerekli!',
     gameStarted: 'Oyun zaten başlamış!',
-    you: '(Sen)',
-    host: 'Ev Sahibi',
-    caboLastRound: 'Son tur! CABO denildi!',
+    you: '(Sen)', host: 'Ev Sahibi',
+    caboLastRound: 'Son tur! KABOO denildi!',
     snapSuccess: 'Eşleşme başarılı! 👊',
-    snapFail: 'Yanlış eşleşme! 😅',
-    total: 'Toplam',
+    snapFail: 'Yanlış eşleşme! +2 ceza kartı 😅',
+    snapSelectCard: 'Eşleştirmek istediğin kartı seç',
+    snapSelectGive: 'Rakibe vermek istediğin kartını seç',
+    total: 'Toplam', reactions: '😀',
+    addBot: '🤖 Bot Ekle', removeBot: '✕',
+    botThinking: 'düşünüyor...', or: 'veya',
+    drawOrDiscard: 'Desteden çek, atılandan al veya KABOO de',
+    chooseAction: 'Kartlarından birini seç → değiştirilecek',
     eliminated: 'Elendi!',
-    reactions: '😀',
     inviteFriend: '📲 Davet Et',
     inviteMsg: '🎴 KABOO oynayalım! Oda kodum: {code}\n\n👉 Katıl: {url}?room={code}',
-    or: 'veya',
-    replaceWith: 'ile değiştir',
-    drawOrDiscard: 'Desteden çek, atılandan al veya CABO de',
-    chooseAction: 'Çektiğin kartı tut veya at',
+    caboNotYet: 'Herkes en az 1 kez oynamalı!',
+    bottomCards: '⬇️ Alt sıradaki kartların:',
+    useAbility: 'Yeteneği kullan',
+    skipAbility: 'Kullanma',
+    areYouSure: 'Emin misiniz?',
+    yes: 'Evet',
+    no: 'Hayır',
+    lastMove: 'SON HAMLE',
+    drewFromPile: 'desteden kart çekti',
+    tookFromDiscard: 'atma destesinden kart aldı',
+    placedAtSlot: 'kartı #{slot} numaraya koydu',
+    discardedCard: 'kartı attı',
+    calledCabo: 'KABOO dedi!',
+    peekedSelf: 'kendi kartına baktı (#{slot})',
+    peekedOther: '{target} oyuncusunun #{slot} kartına baktı',
+    swappedCards: '{p1} #{c1} ↔ {p2} #{c2} kartları değiştirildi',
+    snappedCard: 'TIK TIK! #{slot} kartını eşleştirdi',
+    snappedWrong: 'TIK TIK! Yanlış eşleşme, +2 ceza!',
+    placeCardHere: 'Kartı Buraya Koy',
+    selectedCard: 'Seçilen Kart',
+    leaveGame: 'Oyundan Çık',
+    leaveConfirm: 'Oyundan çıkmak istediğinize emin misiniz?',
+    hostLeft: 'Ev sahibi ayrıldı, oyun bitti!',
+    playerLeft: '{name} oyundan ayrıldı',
+    tikTikUsed: 'Bu kart için TIK TIK zaten kullanıldı',
+    tikTikWon: '{name} TIK TIK kazandı!',
+    swapAnimation: 'KART DEĞİŞİMİ',
+    cardsSwapped: 'Kartlar değiştirildi!',
+    confirmDiscard: 'Bu kartı atmak istediğinize emin misiniz?',
+    confirmKeep: '#{slot} numaraya koymak istediğinize emin misiniz?',
+    confirmSwap: 'Bu değişimi yapmak istediğinize emin misiniz?',
+    confirmCabo: 'KABOO demek istediğinize emin misiniz?',
+    confirmSnap: 'Bu kartı eşleştirmek istediğinize emin misiniz?',
   },
   en: {
-    title: 'KABOO',
-    subtitle: 'Classic Card Game',
-    createRoom: 'Create Room',
-    joinRoom: 'Join Room',
-    enterName: 'Enter your name',
-    enterRoomCode: 'Enter room code',
-    join: 'Join',
-    back: 'Back',
-    waiting: 'Waiting for players...',
-    startGame: 'Start Game',
-    players: 'Players',
-    targetScore: 'Target Score',
-    roomCode: 'Room Code',
-    copyCode: 'Copy',
-    copied: 'Copied!',
-    round: 'Round',
-    scores: 'Scores',
-    yourTurn: 'Your turn!',
-    notYourTurn: "'s turn",
-    drawPile: 'Draw Pile',
-    discardPile: 'Discard Pile',
-    cabo: 'CABO!',
-    caboCall: 'called CABO!',
-    keepCard: 'Keep card',
-    discardCard: 'Discard card',
-    useAbility: 'Use ability',
-    snap: 'Got it! 👊',
-    peekSelf: 'Peek Self',
-    peekOther: 'Peek Other',
-    blindSwap: 'Blind Swap',
-    lookSwap: 'Look & Swap',
+    title: 'KABOO', subtitle: 'Classic Card Game',
+    createRoom: 'Create Room', joinRoom: 'Join Room',
+    enterName: 'Enter your name', enterRoomCode: 'Enter room code',
+    back: 'Back', waiting: 'Waiting for players...',
+    startGame: 'Start Game', players: 'Players',
+    targetScore: 'Target Score', roomCode: 'Room Code',
+    copyCode: 'Copy', copied: 'Copied!',
+    round: 'Round', yourTurn: '🎯 Your turn!',
+    notYourTurn: "'s turn", waitingTurn: 'Wait for your turn...',
+    drawPile: 'Draw Pile', discardPile: 'Discard Pile',
+    cabo: 'KABOO!', caboCall: 'called KABOO!',
+    discardCard: 'Discard',
+    tikTik: 'TIK TIK! 👊',
+    peekSelf: 'Peek Self', peekOther: 'Peek Other',
+    blindSwap: 'Blind Swap', lookSwap: 'Look & Swap',
     selectYourCard: 'Select your card',
     selectOtherCard: "Select opponent's card",
     selectOtherPlayer: 'Select a player',
-    confirm: 'Confirm',
-    cancel: 'Cancel',
-    skip: 'Skip',
-    revealCards: 'Revealing Cards!',
-    roundOver: 'Round Over!',
-    gameOver: 'Game Over!',
-    winner: 'Winner',
-    nextRound: 'Next Round',
-    newGame: 'New Game',
-    leave: 'Leave',
-    chat: 'Chat',
-    sendMsg: 'Send message...',
-    send: 'Send',
-    lookingAtCards: 'Looking at cards...',
-    timeLeft: 'sec left',
-    closeCard: 'Click to close',
+    confirm: 'Confirm', cancel: 'Cancel', skip: 'Skip',
+    roundOver: 'Round Over!', gameOver: 'Game Over!',
+    nextRound: 'Next Round', newGame: 'New Game',
+    chat: 'Chat', sendMsg: 'Send message...', send: 'Send',
+    lookingAtCards: 'Look at your bottom cards!',
+    timeLeft: 'sec', closeCard: 'Click to close',
     minPlayers: 'At least 2 players needed',
-    roomFull: 'Room is full!',
-    roomNotFound: 'Room not found!',
-    nameRequired: 'Name required!',
-    codeRequired: 'Room code required!',
+    roomFull: 'Room is full!', roomNotFound: 'Room not found!',
+    nameRequired: 'Name required!', codeRequired: 'Code required!',
     gameStarted: 'Game already started!',
-    you: '(You)',
-    host: 'Host',
-    caboLastRound: 'Last round! CABO called!',
+    you: '(You)', host: 'Host',
+    caboLastRound: 'Last round! KABOO called!',
     snapSuccess: 'Snap success! 👊',
-    snapFail: 'Wrong snap! 😅',
-    total: 'Total',
+    snapFail: 'Wrong snap! +2 penalty cards 😅',
+    snapSelectCard: 'Select the card you want to match',
+    snapSelectGive: 'Select your card to give to opponent',
+    total: 'Total', reactions: '😀',
+    addBot: '🤖 Add Bot', removeBot: '✕',
+    botThinking: 'thinking...', or: 'or',
+    drawOrDiscard: 'Draw from pile, take from discard, or call KABOO',
+    chooseAction: 'Select one of your cards → it will be replaced',
     eliminated: 'Eliminated!',
-    reactions: '😀',
     inviteFriend: '📲 Invite',
-    inviteMsg: '🎴 Let\'s play KABOO! Room code: {code}\n\n👉 Join: {url}?room={code}',
-    or: 'or',
-    replaceWith: 'replace with',
-    drawOrDiscard: 'Draw from pile, take from discard, or call CABO',
-    chooseAction: 'Keep or discard the drawn card',
+    inviteMsg: "🎴 Let's play KABOO! Room code: {code}\n\n👉 Join: {url}?room={code}",
+    caboNotYet: 'Everyone must play at least once!',
+    bottomCards: '⬇️ Your bottom cards:',
+    useAbility: 'Use ability',
+    skipAbility: "Don't use",
+    areYouSure: 'Are you sure?',
+    yes: 'Yes',
+    no: 'No',
+    lastMove: 'LAST MOVE',
+    drewFromPile: 'drew from pile',
+    tookFromDiscard: 'took from discard',
+    placedAtSlot: 'placed card at #{slot}',
+    discardedCard: 'discarded a card',
+    calledCabo: 'called KABOO!',
+    peekedSelf: 'peeked at own card (#{slot})',
+    peekedOther: "peeked at {target}'s card #{slot}",
+    swappedCards: '{p1} #{c1} ↔ {p2} #{c2} cards swapped',
+    snappedCard: 'TIK TIK! matched card #{slot}',
+    snappedWrong: 'TIK TIK! Wrong match, +2 penalty!',
+    placeCardHere: 'Place Card Here',
+    selectedCard: 'Selected Card',
+    leaveGame: 'Leave Game',
+    leaveConfirm: 'Are you sure you want to leave?',
+    hostLeft: 'Host left, game over!',
+    playerLeft: '{name} left the game',
+    tikTikUsed: 'TIK TIK already used for this card',
+    tikTikWon: '{name} won TIK TIK!',
+    swapAnimation: 'CARD SWAP',
+    cardsSwapped: 'Cards swapped!',
+    confirmDiscard: 'Are you sure you want to discard this card?',
+    confirmKeep: 'Are you sure you want to place at #{slot}?',
+    confirmSwap: 'Are you sure you want to make this swap?',
+    confirmCabo: 'Are you sure you want to call KABOO?',
+    confirmSnap: 'Are you sure you want to match this card?',
   }
 };
 

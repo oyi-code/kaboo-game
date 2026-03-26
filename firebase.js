@@ -11,9 +11,7 @@ const firebaseConfig = {
   projectId: "kaboo-e0e46",
   storageBucket: "kaboo-e0e46.firebasestorage.app",
   messagingSenderId: "298234384764",
-  appId: "1:298234384764:web:fa78ca767550137f4794f9",
-  measurementId: "G-HJNRTY3K6Z"
-
+  appId: "1:298234384764:web:fa78ca767550137f4794f9"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -33,7 +31,7 @@ export async function createRoom(roomCode, hostId, hostName) {
   });
   // Add host as first player
   const playerRef = ref(db, `rooms/${roomCode}/players/${hostId}`);
-  await set(playerRef, { id: hostId, name: hostName, connected: true, joinedAt: Date.now() });
+  await set(playerRef, { id: hostId, name: hostName, connected: true, isBot: false, joinedAt: Date.now() });
   // Init scores
   const scoreRef = ref(db, `rooms/${roomCode}/scores/${hostId}`);
   await set(scoreRef, 0);
@@ -52,7 +50,7 @@ export async function joinRoom(roomCode, playerId, playerName) {
 
   // Add player
   const playerRef = ref(db, `rooms/${roomCode}/players/${playerId}`);
-  await set(playerRef, { id: playerId, name: playerName, connected: true, joinedAt: Date.now() });
+  await set(playerRef, { id: playerId, name: playerName, connected: true, isBot: false, joinedAt: Date.now() });
   const scoreRef = ref(db, `rooms/${roomCode}/scores/${playerId}`);
   await set(scoreRef, 0);
 
@@ -147,4 +145,17 @@ export function subscribeToGameState(roomCode, callback) {
   });
 }
 
-export { db, ref, set, get, update, onValue };
+export { db, ref, set, get, update, onValue, remove };
+
+// --- Room cleanup ---
+export async function deleteRoom(roomCode) {
+  const roomRef = ref(db, `rooms/${roomCode}`);
+  await remove(roomRef);
+}
+
+export async function removePlayer(roomCode, playerId) {
+  const playerRef = ref(db, `rooms/${roomCode}/players/${playerId}`);
+  await remove(playerRef);
+  const scoreRef = ref(db, `rooms/${roomCode}/scores/${playerId}`);
+  await remove(scoreRef);
+}
