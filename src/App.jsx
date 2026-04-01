@@ -410,7 +410,7 @@ export default function App() {
     const la = gameData.lastAction;
     if (la.type === 'swap_anim' && la.ts > lastSwapTsRef.current && la.pid !== pid) {
       lastSwapTsRef.current = la.ts;
-      setSwapAnim({ p1: la.p1, c1: la.c1, p2: la.p2, c2: la.c2, phase: 'sliding' });
+      setSwapAnim({ p1: la.p1, c1: la.c1, p2: la.p2, c2: la.c2, phase: 'start' }); requestAnimationFrame(() => { requestAnimationFrame(() => { setSwapAnim(prev => prev ? { ...prev, phase: 'sliding' } : null); }); });
       setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 5000);
       setTimeout(() => setSwapAnim(null), 8000);
     }
@@ -626,7 +626,7 @@ export default function App() {
       } else if (ability === 'blindSwap' && selMy !== null && selOp && selOc !== null) {
         const p1name = pname;
         const p2name = players.find(p => p.id === selOp)?.name || '';
-        setSwapAnim({ p1: p1name, c1: selMy, p2: p2name, c2: selOc, phase: 'sliding' });
+        setSwapAnim({ p1: p1name, c1: selMy, p2: p2name, c2: selOc, phase: 'start' }); requestAnimationFrame(() => { requestAnimationFrame(() => { setSwapAnim(prev => prev ? { ...prev, phase: 'sliding' } : null); }); });
         setAbility(null);
         const mc = gs.hands[pid][selMy], oc = gs.hands[selOp][selOc];
         gs.hands[pid][selMy] = { ...oc, position: selMy }; gs.hands[selOp][selOc] = { ...mc, position: selOc };
@@ -645,7 +645,7 @@ export default function App() {
         if (aStep === 1) {
           if (selMy !== null) {
             const p1name = pname; const p2name = players.find(p => p.id === selOp)?.name || '';
-            setSwapAnim({ p1: p1name, c1: selMy, p2: p2name, c2: selOc, phase: 'sliding' });
+            setSwapAnim({ p1: p1name, c1: selMy, p2: p2name, c2: selOc, phase: 'start' }); requestAnimationFrame(() => { requestAnimationFrame(() => { setSwapAnim(prev => prev ? { ...prev, phase: 'sliding' } : null); }); });
             const mc = gs.hands[pid][selMy], oc = gs.hands[selOp][selOc];
             gs.hands[pid][selMy] = { ...oc, position: selMy }; gs.hands[selOp][selOc] = { ...mc, position: selOc };
             gs.lastAction = { type: 'swap_anim', pid, p1: p1name, c1: selMy, p2: p2name, c2: selOc, ts: Date.now() };
@@ -1054,51 +1054,45 @@ export default function App() {
               const dn = (idx) => { const map = { 0: 3, 1: 4, 2: 1, 3: 2 }; return idx < 4 ? map[idx] : idx + 1; };
               return (
               <div className="overlay" style={{ background: 'rgba(0,0,0,.92)', zIndex: 70 }}>
-                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 36, color: S.gbright, textAlign: 'center', letterSpacing: 4, textShadow: '0 0 30px rgba(212,168,67,.4)', marginBottom: 16 }}>
+                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 32, color: S.gbright, textAlign: 'center', letterSpacing: 4, textShadow: '0 0 30px rgba(212,168,67,.4)' }}>
                   🔄 {t.swapAnimation}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: 40, position: 'relative', minHeight: 180, width: '100%', maxWidth: 400, margin: '0 auto' }}>
-                  {/* Player 1 */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 24, position: 'relative', minHeight: 180 }}>
+                  {/* Player 1 — left side */}
                   <div style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flex: 1,
-                    transform: swapAnim.phase === 'sliding' ? 'translateX(calc(50% + 20px))' : 'translateX(0)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                    marginRight: 50,
+                    transform: swapAnim.phase === 'sliding' ? 'translateX(70px)' : 'translateX(0)',
                     transition: 'transform 3s cubic-bezier(0.25,0.1,0.25,1)',
                   }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: S.gbright, padding: '5px 14px', background: 'rgba(212,168,67,.15)', borderRadius: 8, border: '1px solid rgba(212,168,67,.3)', textAlign: 'center', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {swapAnim.p1}
-                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: S.gbright, padding: '4px 12px', background: 'rgba(212,168,67,.15)', borderRadius: 6, border: '1px solid rgba(212,168,67,.3)' }}>{swapAnim.p1}</div>
                     <Card card={{ rank: '?', suit: '?' }} faceUp={false} />
-                    <div style={{ fontSize: 14, color: S.gold, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700 }}>
-                      Kart #{dn(swapAnim.c1)}
-                    </div>
+                    <div style={{ fontSize: 13, color: S.gold, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700 }}>Kart #{dn(swapAnim.c1)}</div>
                   </div>
 
-                  {/* Center arrow */}
-                  <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', fontSize: 36, color: S.gold, textShadow: '0 0 20px rgba(212,168,67,.5)', zIndex: 2 }}>⇄</div>
+                  {/* Arrow — between cards */}
+                  <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', fontSize: 32, color: S.gold, textShadow: '0 0 20px rgba(212,168,67,.5)', zIndex: 2 }}>⇄</div>
 
-                  {/* Player 2 */}
+                  {/* Player 2 — right side */}
                   <div style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flex: 1,
-                    transform: swapAnim.phase === 'sliding' ? 'translateX(calc(-50% - 20px))' : 'translateX(0)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                    marginLeft: 50,
+                    transform: swapAnim.phase === 'sliding' ? 'translateX(-70px)' : 'translateX(0)',
                     transition: 'transform 3s cubic-bezier(0.25,0.1,0.25,1)',
                   }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: S.gbright, padding: '5px 14px', background: 'rgba(212,168,67,.15)', borderRadius: 8, border: '1px solid rgba(212,168,67,.3)', textAlign: 'center', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {swapAnim.p2}
-                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: S.gbright, padding: '4px 12px', background: 'rgba(212,168,67,.15)', borderRadius: 6, border: '1px solid rgba(212,168,67,.3)' }}>{swapAnim.p2}</div>
                     <Card card={{ rank: '?', suit: '?' }} faceUp={false} />
-                    <div style={{ fontSize: 14, color: S.gold, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700 }}>
-                      Kart #{dn(swapAnim.c2)}
-                    </div>
+                    <div style={{ fontSize: 13, color: S.gold, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700 }}>Kart #{dn(swapAnim.c2)}</div>
                   </div>
                 </div>
 
                 {swapAnim.phase === 'done' && (
-                  <div style={{ marginTop: 28, padding: '16px 32px', background: 'rgba(212,168,67,.12)', border: `2px solid ${S.gold}`, borderRadius: 12, textAlign: 'center', animation: 'din .4s ease-out', maxWidth: 360 }}>
-                    <div style={{ fontSize: 18, color: S.gbright, fontWeight: 700, letterSpacing: 1 }}>
+                  <div style={{ marginTop: 24, padding: '14px 28px', background: 'rgba(212,168,67,.12)', border: `2px solid ${S.gold}`, borderRadius: 12, textAlign: 'center', animation: 'din .4s ease-out' }}>
+                    <div style={{ fontSize: 18, color: S.gbright, fontWeight: 700 }}>
                       {swapAnim.p1} #{dn(swapAnim.c1)} ⇄ {swapAnim.p2} #{dn(swapAnim.c2)}
                     </div>
-                    <div style={{ fontSize: 15, color: S.dim, marginTop: 6 }}>{t.cardsSwapped}</div>
+                    <div style={{ fontSize: 14, color: S.dim, marginTop: 6 }}>{t.cardsSwapped}</div>
                   </div>
                 )}
               </div>
