@@ -155,7 +155,7 @@ function LastMoveBar({ text, detail, t, showPopup, onToggle }) {
 function botPlay(gs, botId, pOrder) {
   const h = gs.hands[botId] || []; if (!h.length) return gs;
   if (!gs.caboFinalRound && (gs.turnCount || 0) >= pOrder.length && h.filter(Boolean).length <= 3 && Math.random() < 0.1) {
-    gs.caboCallerId = botId; gs.caboFinalRound = true; gs.caboTurnsLeft = pOrder.length - 1;
+    gs.caboCallerId = botId; gs.caboFinalRound = true; gs.caboTurnsLeft = pOrder.length;
     gs.lastAction = { type: 'cabo', pid: botId, name: gs.players?.find(p => p.id === botId)?.name || 'Bot', ts: Date.now() };
     return gs;
   }
@@ -411,8 +411,8 @@ export default function App() {
     if (la.type === 'swap_anim' && la.ts > lastSwapTsRef.current && la.pid !== pid) {
       lastSwapTsRef.current = la.ts;
       setSwapAnim({ p1: la.p1, c1: la.c1, p2: la.p2, c2: la.c2, phase: 'sliding' });
-      setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 4000);
-      setTimeout(() => setSwapAnim(null), 5000);
+      setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 5000);
+      setTimeout(() => setSwapAnim(null), 8000);
     }
   }, [gameData?.lastAction, pid]);
 
@@ -635,8 +635,8 @@ export default function App() {
         if (adv.status === 'roundEnd') setRevealed(true);
         swapPendingRef.current = adv;
         await save({ ...gs, currentPlayerIndex: adv.currentPlayerIndex });
-        setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 4000);
-        setTimeout(async () => { setSwapAnim(null); setPhase('start'); if (swapPendingRef.current) { await save(swapPendingRef.current); swapPendingRef.current = null; } playSound('cardDeal'); }, 5000);
+        setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 5000);
+        setTimeout(async () => { setSwapAnim(null); setPhase('start'); if (swapPendingRef.current) { await save(swapPendingRef.current); swapPendingRef.current = null; } playSound('cardDeal'); }, 8000);
       } else if (ability === 'lookSwap') {
         if (aStep === 0 && selOp && selOc !== null) {
           const oh = gs.hands[selOp]; if (oh?.[selOc]) { setTempCard(oh[selOc]); startPeek([], 10); }
@@ -653,8 +653,8 @@ export default function App() {
             if (adv.status === 'roundEnd') setRevealed(true);
             swapPendingRef.current = adv;
             await save({ ...gs, currentPlayerIndex: adv.currentPlayerIndex });
-            setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 4000);
-            setTimeout(async () => { setSwapAnim(null); setPhase('start'); if (swapPendingRef.current) { await save(swapPendingRef.current); swapPendingRef.current = null; } playSound('cardDeal'); }, 5000);
+            setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 5000);
+            setTimeout(async () => { setSwapAnim(null); setPhase('start'); if (swapPendingRef.current) { await save(swapPendingRef.current); swapPendingRef.current = null; } playSound('cardDeal'); }, 8000);
           } else {
             // Didn't swap, but tell everyone which card was looked at
             const targetName = players.find(p => p.id === selOp)?.name || '?';
@@ -681,7 +681,7 @@ export default function App() {
       setConfirm(null);
       const gs = JSON.parse(JSON.stringify(gameData));
       gs.caboCallerId = pid; gs.caboFinalRound = true;
-      gs.caboTurnsLeft = pOrder.length - 1;
+      gs.caboTurnsLeft = pOrder.length;
       gs.lastAction = { type: 'cabo', pid, name: pname, ts: Date.now() };
       const adv = advTurn(gs); setPhase('start');
       if (adv.status === 'roundEnd') setRevealed(true);
@@ -1054,23 +1054,50 @@ export default function App() {
               const dn = (idx) => { const map = { 0: 3, 1: 4, 2: 1, 3: 2 }; return idx < 4 ? map[idx] : idx + 1; };
               return (
               <div className="overlay" style={{ background: 'rgba(0,0,0,.92)', zIndex: 70 }}>
-                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 40, color: S.gbright, textAlign: 'center', letterSpacing: 6, textShadow: '0 0 30px rgba(212,168,67,.4)' }}>🔄 {t.swapAnimation}</div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 60, marginTop: 32, position: 'relative', minHeight: 200 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, transform: swapAnim.phase === 'sliding' ? 'translateX(100px)' : 'translateX(0)', transition: 'transform 3s cubic-bezier(0.25,0.1,0.25,1)' }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: S.gbright, padding: '4px 12px', background: 'rgba(212,168,67,.15)', borderRadius: 6, border: '1px solid rgba(212,168,67,.3)' }}>{swapAnim.p1}</div>
+                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 36, color: S.gbright, textAlign: 'center', letterSpacing: 4, textShadow: '0 0 30px rgba(212,168,67,.4)', marginBottom: 16 }}>
+                  🔄 {t.swapAnimation}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: 40, position: 'relative', minHeight: 180, width: '100%', maxWidth: 400, margin: '0 auto' }}>
+                  {/* Player 1 */}
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flex: 1,
+                    transform: swapAnim.phase === 'sliding' ? 'translateX(calc(50% + 20px))' : 'translateX(0)',
+                    transition: 'transform 3s cubic-bezier(0.25,0.1,0.25,1)',
+                  }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: S.gbright, padding: '5px 14px', background: 'rgba(212,168,67,.15)', borderRadius: 8, border: '1px solid rgba(212,168,67,.3)', textAlign: 'center', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {swapAnim.p1}
+                    </div>
                     <Card card={{ rank: '?', suit: '?' }} faceUp={false} />
-                    <div style={{ fontSize: 13, color: S.gold, fontFamily: "'JetBrains Mono',monospace" }}>Kart #{dn(swapAnim.c1)}</div>
+                    <div style={{ fontSize: 14, color: S.gold, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700 }}>
+                      Kart #{dn(swapAnim.c1)}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 40, color: S.gold, position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', textShadow: '0 0 20px rgba(212,168,67,.5)' }}>⇄</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, transform: swapAnim.phase === 'sliding' ? 'translateX(-100px)' : 'translateX(0)', transition: 'transform 3s cubic-bezier(0.25,0.1,0.25,1)' }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: S.gbright, padding: '4px 12px', background: 'rgba(212,168,67,.15)', borderRadius: 6, border: '1px solid rgba(212,168,67,.3)' }}>{swapAnim.p2}</div>
+
+                  {/* Center arrow */}
+                  <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', fontSize: 36, color: S.gold, textShadow: '0 0 20px rgba(212,168,67,.5)', zIndex: 2 }}>⇄</div>
+
+                  {/* Player 2 */}
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flex: 1,
+                    transform: swapAnim.phase === 'sliding' ? 'translateX(calc(-50% - 20px))' : 'translateX(0)',
+                    transition: 'transform 3s cubic-bezier(0.25,0.1,0.25,1)',
+                  }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: S.gbright, padding: '5px 14px', background: 'rgba(212,168,67,.15)', borderRadius: 8, border: '1px solid rgba(212,168,67,.3)', textAlign: 'center', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {swapAnim.p2}
+                    </div>
                     <Card card={{ rank: '?', suit: '?' }} faceUp={false} />
-                    <div style={{ fontSize: 13, color: S.gold, fontFamily: "'JetBrains Mono',monospace" }}>Kart #{dn(swapAnim.c2)}</div>
+                    <div style={{ fontSize: 14, color: S.gold, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700 }}>
+                      Kart #{dn(swapAnim.c2)}
+                    </div>
                   </div>
                 </div>
+
                 {swapAnim.phase === 'done' && (
-                  <div style={{ marginTop: 24, padding: '14px 32px', background: 'rgba(212,168,67,.12)', border: `2px solid ${S.gold}`, borderRadius: 12, textAlign: 'center', animation: 'din .4s ease-out' }}>
-                    <div style={{ fontSize: 20, color: S.gbright, fontWeight: 700, letterSpacing: 2 }}>{swapAnim.p1} #{dn(swapAnim.c1)} ⇄ {swapAnim.p2} #{dn(swapAnim.c2)}</div>
+                  <div style={{ marginTop: 28, padding: '16px 32px', background: 'rgba(212,168,67,.12)', border: `2px solid ${S.gold}`, borderRadius: 12, textAlign: 'center', animation: 'din .4s ease-out', maxWidth: 360 }}>
+                    <div style={{ fontSize: 18, color: S.gbright, fontWeight: 700, letterSpacing: 1 }}>
+                      {swapAnim.p1} #{dn(swapAnim.c1)} ⇄ {swapAnim.p2} #{dn(swapAnim.c2)}
+                    </div>
                     <div style={{ fontSize: 15, color: S.dim, marginTop: 6 }}>{t.cardsSwapped}</div>
                   </div>
                 )}
