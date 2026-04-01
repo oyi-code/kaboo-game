@@ -44,7 +44,7 @@ export function getCardAbility(c) {
   if (c.rank === '7' || c.rank === '8') return 'peekSelf';       // Kendine Bak
   if (c.rank === '9' || c.rank === '10') return 'peekOther';     // Başkasına Bak
   if (c.rank === 'Q' || c.rank === 'J') return 'blindSwap';      // Kör Değişim
-  if (c.rank === 'K' && !isRedSuit(c.suit)) return 'lookSwap';   // Bak & Değiştir (only black K)
+  if (c.rank === 'K') return 'lookSwap';   // Bak & Değiştir (all Kings - both black and red)
   return null;
 }
 

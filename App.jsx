@@ -44,10 +44,12 @@ function Card({ card, faceUp, highlighted, onClick, small, disabled, peeking, an
 // ══════════════════════════════════════════
 // HAND GRID — 2x2 base, penalties on top, stable positions (null = empty slot)
 // ══════════════════════════════════════════
-function HandGrid({ cards, small, faceUp, peek, hl, onClick, anim, hoveredIdx, onHoverIdx, onLeaveIdx, hoverLabelText, glowIdx }) {
+function HandGrid({ cards, small, faceUp, peek, hl, onClick, anim, hoveredIdx, onHoverIdx, onLeaveIdx, hoverLabelText, glowIdx, flipped }) {
   // Cards array: [0]=top-left, [1]=top-right, [2]=bottom-left, [3]=bottom-right
-  // Display numbers: bottom row (idx 2,3) = #1,#2 (yakın/görülen), top row (idx 0,1) = #3,#4 (uzak/görülmeyen)
-  const displayNum = { 0: 3, 1: 4, 2: 1, 3: 2 }; // idx → display number
+  // Display numbers are ALWAYS the same for everyone:
+  //   idx 2,3 = #1,#2 (owner's near cards, the ones they peek at start)
+  //   idx 0,1 = #3,#4 (owner's far cards)
+  const displayNum = { 0: 3, 1: 4, 2: 1, 3: 2 };
   const base = [cards[0] || null, cards[1] || null, cards[2] || null, cards[3] || null];
   const pen = cards.slice(4);
   const penRows = [];
@@ -57,7 +59,7 @@ function HandGrid({ cards, small, faceUp, peek, hl, onClick, anim, hoveredIdx, o
 
   const rc = (c, idx) => {
     if (!c) return <div key={idx} style={{ width: small ? 44 : 62, height: small ? 62 : 88, border: '2px dashed rgba(255,255,255,.1)', borderRadius: 7, opacity: 0.3 }} />;
-    const dn = idx < 4 ? displayNum[idx] : idx + 1; // penalty cards: #5,#6,...
+    const dn = idx < 4 ? displayNum[idx] : idx + 1;
     return <Card key={idx} card={c} faceUp={faceUp} small={small} peeking={peek?.[idx]}
       highlighted={hl?.(idx) || hoveredIdx === idx} onClick={() => onClick?.(idx)} anim={anim}
       style={anim ? { animationDelay: `${idx * 0.08}s` } : undefined}
@@ -67,13 +69,28 @@ function HandGrid({ cards, small, faceUp, peek, hl, onClick, anim, hoveredIdx, o
       onHover={() => onHoverIdx?.(idx)} onLeave={() => onLeaveIdx?.()} />;
   };
 
+  if (flipped) {
+    // Flipped: opponent view — their #1,#2 (idx 2,3) on top, #3,#4 (idx 0,1) on bottom, penalties at bottom
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: vg }}>
+        {/* Top: opponent's #1,#2 (their near cards) */}
+        <div style={{ display: 'flex', gap: g }}>{[2, 3].map(i => rc(base[i], i))}</div>
+        {/* Bottom: opponent's #3,#4 (their far cards) */}
+        <div style={{ display: 'flex', gap: g }}>{[0, 1].map(i => rc(base[i], i))}</div>
+        {/* Penalty cards at bottom (farthest from viewer) */}
+        {penRows.map((r, ri) => <div key={`p${ri}`} style={{ display: 'flex', gap: g }}>{r.map((c, ci) => rc(c, 4 + ri * 2 + ci))}</div>)}
+      </div>
+    );
+  }
+
+  // Normal: own view — #3,#4 on top (far), #1,#2 on bottom (near)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: vg }}>
-      {/* Penalty cards (top, farthest) */}
+      {/* Penalty cards on top (farthest) */}
       {penRows.map((r, ri) => <div key={`p${ri}`} style={{ display: 'flex', gap: g }}>{r.map((c, ci) => rc(c, 4 + ri * 2 + ci))}</div>)}
-      {/* Top row: idx 0,1 → #3,#4 (uzak) */}
+      {/* Top row: #3,#4 (uzak) */}
       <div style={{ display: 'flex', gap: g }}>{[0, 1].map(i => rc(base[i], i))}</div>
-      {/* Bottom row: idx 2,3 → #1,#2 (yakın, oyuncuya en yakın) */}
+      {/* Bottom row: #1,#2 (yakın) */}
       <div style={{ display: 'flex', gap: g }}>{[2, 3].map(i => rc(base[i], i))}</div>
     </div>
   );
@@ -138,7 +155,7 @@ function LastMoveBar({ text, detail, t, showPopup, onToggle }) {
 function botPlay(gs, botId, pOrder) {
   const h = gs.hands[botId] || []; if (!h.length) return gs;
   if (!gs.caboFinalRound && (gs.turnCount || 0) >= pOrder.length && h.filter(Boolean).length <= 3 && Math.random() < 0.1) {
-    gs.caboCallerId = botId; gs.caboFinalRound = true; gs.caboTurnsLeft = pOrder.length - 1;
+    gs.caboCallerId = botId; gs.caboFinalRound = true; gs.caboTurnsLeft = pOrder.length;
     gs.lastAction = { type: 'cabo', pid: botId, name: gs.players?.find(p => p.id === botId)?.name || 'Bot', ts: Date.now() };
     return gs;
   }
@@ -234,7 +251,6 @@ export default function App() {
   const botRef = useRef(null);
   const showChatRef = useRef(showChat);
   const lastChatRef = useRef(0);
-  const lastPeekRoundRef = useRef(0);
   const peekStartedRef = useRef(false);
   const lastSwapTsRef = useRef(0);
   const lastActionTsRef = useRef(0);
@@ -363,15 +379,17 @@ export default function App() {
     lastActionTsRef.current = gameData.lastAction.ts;
     const la = gameData.lastAction;
     const nm = la.name || '???';
+    // Convert data index to display number: idx 0→#3, 1→#4, 2→#1, 3→#2, 4+→#5+
+    const dn = (idx) => { const map = { 0: 3, 1: 4, 2: 1, 3: 2 }; return idx < 4 ? map[idx] : idx + 1; };
     let txt = '';
     let detail = '';
     if (la.type === 'discard') { txt = `${nm} ${t.discardedCard}`; detail = `${nm} çektiği kartı atma destesine attı.`; }
-    else if (la.type === 'swap') { txt = `${nm} ${t.placedAtSlot.replace('{slot}', la.slot + 1)}`; detail = `${nm} çektiği kartı #${la.slot + 1} numaraya koydu, eski kartı attı.`; }
+    else if (la.type === 'swap') { txt = `${nm} ${t.placedAtSlot.replace('{slot}', dn(la.slot))}`; detail = `${nm} çektiği kartı #${dn(la.slot)} numaraya koydu, eski kartı attı.`; }
     else if (la.type === 'cabo') { txt = `🚨 ${nm} ${t.calledCabo}`; detail = `${nm} KABOO dedi! Diğer oyuncular 1'er tur daha oynayacak.`; }
-    else if (la.type === 'peek_self') { txt = `👁️ ${nm} ${t.peekedSelf.replace('{slot}', la.slot + 1)}`; detail = `${nm} kendi #${la.slot + 1} numaralı kartına baktı.`; }
-    else if (la.type === 'peek_other') { txt = `👁️ ${nm} ${t.peekedOther.replace('{target}', la.targetName || '?').replace('{slot}', la.slot + 1)}`; detail = `${nm}, ${la.targetName || '?'} oyuncusunun #${la.slot + 1} numaralı kartına baktı.`; }
-    else if (la.type === 'swap_anim') { txt = `🔄 ${t.swappedCards.replace('{p1}', la.p1).replace('{c1}', la.c1 + 1).replace('{p2}', la.p2).replace('{c2}', la.c2 + 1)}`; detail = `${la.p1} #${la.c1 + 1} kartı ile ${la.p2} #${la.c2 + 1} kartı değiştirildi!`; }
-    else if (la.type === 'snap_ok') { txt = `👊 ${nm} TIK TIK! #${la.slot + 1} ${t.snappedCard.replace('{slot}', la.slot + 1)}`; detail = `${nm} TIK TIK ile #${la.slot + 1} numaralı kartı eşleştirdi ve çıkardı!`; }
+    else if (la.type === 'peek_self') { txt = `👁️ ${nm} ${t.peekedSelf.replace('{slot}', dn(la.slot))}`; detail = `${nm} kendi #${dn(la.slot)} numaralı kartına baktı.`; }
+    else if (la.type === 'peek_other') { txt = `👁️ ${nm} ${t.peekedOther.replace('{target}', la.targetName || '?').replace('{slot}', dn(la.slot))}`; detail = `${nm}, ${la.targetName || '?'} oyuncusunun #${dn(la.slot)} numaralı kartına baktı.`; }
+    else if (la.type === 'swap_anim') { txt = `🔄 ${t.swappedCards.replace('{p1}', la.p1).replace('{c1}', dn(la.c1)).replace('{p2}', la.p2).replace('{c2}', dn(la.c2))}`; detail = `${la.p1} #${dn(la.c1)} kartı ile ${la.p2} #${dn(la.c2)} kartı değiştirildi!`; }
+    else if (la.type === 'snap_ok') { txt = `👊 ${nm} TIK TIK! #${dn(la.slot)} ${t.snappedCard.replace('{slot}', dn(la.slot))}`; detail = `${nm} TIK TIK ile #${dn(la.slot)} numaralı kartı eşleştirdi ve çıkardı!`; }
     else if (la.type === 'snap_fail') { txt = `❌ ${nm} ${t.snappedWrong}`; detail = `${nm} yanlış eşleşme yaptı! 2 ceza kartı aldı.`; }
     else if (la.type === 'drew') { txt = `${nm} ${t.drewFromPile}`; detail = `${nm} çekme destesinden kart çekti.`; }
     else if (la.type === 'took_discard') { txt = `${nm} ${t.tookFromDiscard}`; detail = `${nm} atma destesinden kart aldı.`; }
@@ -392,9 +410,9 @@ export default function App() {
     const la = gameData.lastAction;
     if (la.type === 'swap_anim' && la.ts > lastSwapTsRef.current && la.pid !== pid) {
       lastSwapTsRef.current = la.ts;
-      setSwapAnim({ p1: la.p1, c1: la.c1, p2: la.p2, c2: la.c2, phase: 'sliding' });
-      setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 4000);
-      setTimeout(() => setSwapAnim(null), 5000);
+      setSwapAnim({ p1: la.p1, c1: la.c1, p2: la.p2, c2: la.c2, phase: 'start' }); requestAnimationFrame(() => { requestAnimationFrame(() => { setSwapAnim(prev => prev ? { ...prev, phase: 'sliding' } : null); }); });
+      setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 5000);
+      setTimeout(() => setSwapAnim(null), 8000);
     }
   }, [gameData?.lastAction, pid]);
 
@@ -464,22 +482,35 @@ export default function App() {
     }
   };
 
-  // ── Peek ──
+  // ── Peek — triggers for ALL players. Uses round number to ensure each player peeks once per round ──
+  const peekedRoundRef = useRef(0); // which round we already peeked for
+
   useEffect(() => {
-    if (gameData?.status === 'peeking' && gameData?.round > 0 && gameData.round !== lastPeekRoundRef.current) {
-      lastPeekRoundRef.current = gameData.round;
+    if (!gameData?.hands?.[pid] || !gameData?.round) return;
+    const curStatus = gameData.status;
+    const curRound = gameData.round;
+
+    // Already peeked for this round? Skip
+    if (peekedRoundRef.current >= curRound) return;
+
+    // Trigger peek if status is 'peeking' OR 'playing' (in case we missed 'peeking')
+    if (curStatus === 'peeking' || curStatus === 'playing') {
+      console.log('PEEK TRIGGERED for', pid, 'round', curRound, 'status', curStatus);
+      peekedRoundRef.current = curRound;
       setIPeek(true); setIPeekT(15); setDrawn(null); setPhase('start'); setAbility(null); setRevealed(false);
       setTempCard(null); setSnapMode(null); setSnapGiveMode(false); setLastMoveText('');
+      setPeekCards({ 2: true, 3: true });
       playSound('cardDeal');
     }
-  }, [gameData?.status, gameData?.round]);
+  }, [gameData?.status, gameData?.round, gameData?.hands, pid]);
 
+  // Peek countdown
   useEffect(() => {
     if (iPeek && iPeekT > 0) { const tm = setTimeout(() => setIPeekT(v => v - 1), 1000); return () => clearTimeout(tm); }
     if (iPeek && iPeekT === 0) { setIPeek(false); setPeekCards({}); }
   }, [iPeek, iPeekT]);
-  useEffect(() => { if (iPeek && gameData?.hands?.[pid]) setPeekCards({ 2: true, 3: true }); }, [iPeek, pid, gameData?.hands]);
 
+  // Host transitions peeking → playing after their peek ends
   useEffect(() => { if (iPeek) peekStartedRef.current = true; }, [iPeek]);
   useEffect(() => {
     if (gameData?.status === 'peeking' && !iPeek && peekStartedRef.current && isHost) {
@@ -536,7 +567,10 @@ export default function App() {
 
   const keepDrawn = (idx) => {
     if (!drawn) return;
-    askConfirm(t.confirmKeep.replace('{slot}', idx + 1), async () => {
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
+    const dnMap = { 0: 3, 1: 4, 2: 1, 3: 2 };
+    const displaySlot = idx < 4 ? dnMap[idx] : idx + 1;
+    askConfirm(t.confirmKeep.replace('{slot}', displaySlot), async () => {
       setConfirm(null);
       const gs = JSON.parse(JSON.stringify(gameData));
       const old = gs.hands[pid][idx]; gs.hands[pid][idx] = { ...drawn, position: idx }; gs.discardPile.push(old);
@@ -551,6 +585,7 @@ export default function App() {
 
   const discardDrawn = () => {
     if (!drawn) return;
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
     askConfirm(t.confirmDiscard, async () => {
       setConfirm(null);
       const gs = JSON.parse(JSON.stringify(gameData));
@@ -576,6 +611,7 @@ export default function App() {
   };
 
   const execAbil = () => {
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
     const doExec = async () => {
       setConfirm(null);
       const gs = JSON.parse(JSON.stringify(gameData));
@@ -593,7 +629,7 @@ export default function App() {
       } else if (ability === 'blindSwap' && selMy !== null && selOp && selOc !== null) {
         const p1name = pname;
         const p2name = players.find(p => p.id === selOp)?.name || '';
-        setSwapAnim({ p1: p1name, c1: selMy, p2: p2name, c2: selOc, phase: 'sliding' });
+        setSwapAnim({ p1: p1name, c1: selMy, p2: p2name, c2: selOc, phase: 'start' }); requestAnimationFrame(() => { requestAnimationFrame(() => { setSwapAnim(prev => prev ? { ...prev, phase: 'sliding' } : null); }); });
         setAbility(null);
         const mc = gs.hands[pid][selMy], oc = gs.hands[selOp][selOc];
         gs.hands[pid][selMy] = { ...oc, position: selMy }; gs.hands[selOp][selOc] = { ...mc, position: selOc };
@@ -602,8 +638,8 @@ export default function App() {
         if (adv.status === 'roundEnd') setRevealed(true);
         swapPendingRef.current = adv;
         await save({ ...gs, currentPlayerIndex: adv.currentPlayerIndex });
-        setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 4000);
-        setTimeout(async () => { setSwapAnim(null); setPhase('start'); if (swapPendingRef.current) { await save(swapPendingRef.current); swapPendingRef.current = null; } playSound('cardDeal'); }, 5000);
+        setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 5000);
+        setTimeout(async () => { setSwapAnim(null); setPhase('start'); if (swapPendingRef.current) { await save(swapPendingRef.current); swapPendingRef.current = null; } playSound('cardDeal'); }, 8000);
       } else if (ability === 'lookSwap') {
         if (aStep === 0 && selOp && selOc !== null) {
           const oh = gs.hands[selOp]; if (oh?.[selOc]) { setTempCard(oh[selOc]); startPeek([], 10); }
@@ -612,7 +648,7 @@ export default function App() {
         if (aStep === 1) {
           if (selMy !== null) {
             const p1name = pname; const p2name = players.find(p => p.id === selOp)?.name || '';
-            setSwapAnim({ p1: p1name, c1: selMy, p2: p2name, c2: selOc, phase: 'sliding' });
+            setSwapAnim({ p1: p1name, c1: selMy, p2: p2name, c2: selOc, phase: 'start' }); requestAnimationFrame(() => { requestAnimationFrame(() => { setSwapAnim(prev => prev ? { ...prev, phase: 'sliding' } : null); }); });
             const mc = gs.hands[pid][selMy], oc = gs.hands[selOp][selOc];
             gs.hands[pid][selMy] = { ...oc, position: selMy }; gs.hands[selOp][selOc] = { ...mc, position: selOc };
             gs.lastAction = { type: 'swap_anim', pid, p1: p1name, c1: selMy, p2: p2name, c2: selOc, ts: Date.now() };
@@ -620,8 +656,8 @@ export default function App() {
             if (adv.status === 'roundEnd') setRevealed(true);
             swapPendingRef.current = adv;
             await save({ ...gs, currentPlayerIndex: adv.currentPlayerIndex });
-            setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 4000);
-            setTimeout(async () => { setSwapAnim(null); setPhase('start'); if (swapPendingRef.current) { await save(swapPendingRef.current); swapPendingRef.current = null; } playSound('cardDeal'); }, 5000);
+            setTimeout(() => setSwapAnim(prev => prev ? { ...prev, phase: 'done' } : null), 5000);
+            setTimeout(async () => { setSwapAnim(null); setPhase('start'); if (swapPendingRef.current) { await save(swapPendingRef.current); swapPendingRef.current = null; } playSound('cardDeal'); }, 8000);
           } else {
             // Didn't swap, but tell everyone which card was looked at
             const targetName = players.find(p => p.id === selOp)?.name || '?';
@@ -644,11 +680,12 @@ export default function App() {
   const callCabo = () => {
     if (!isMyTurn || phase !== 'start') return;
     if (!caboAvailable) { notify(t.caboNotYet); return; }
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
     askConfirm(t.confirmCabo, async () => {
       setConfirm(null);
       const gs = JSON.parse(JSON.stringify(gameData));
       gs.caboCallerId = pid; gs.caboFinalRound = true;
-      gs.caboTurnsLeft = pOrder.length - 1;
+      gs.caboTurnsLeft = pOrder.length;
       gs.lastAction = { type: 'cabo', pid, name: pname, ts: Date.now() };
       const adv = advTurn(gs); setPhase('start');
       if (adv.status === 'roundEnd') setRevealed(true);
@@ -695,10 +732,10 @@ export default function App() {
       const gs = JSON.parse(JSON.stringify(gameData));
       if (gs.tikTikUsedForCard === true) { notify(t.tikTikUsed); setSnapMode(null); gs.tikTikLock = null; await save(gs); return; }
       gs.tikTikUsedForCard = true;
-      gs.tikTikLock = null; // Release lock
+      // Keep lock active — will release 3s after result
 
       const tc = gs.hands[targetPid]?.[cardIdx];
-      if (!tc) { setSnapMode(null); await save(gs); return; }
+      if (!tc) { setSnapMode(null); gs.tikTikLock = null; await save(gs); return; }
       const ld = gs.discardPile[gs.discardPile.length - 1];
 
       if (cardValue(tc) === cardValue(ld)) {
@@ -725,6 +762,16 @@ export default function App() {
         setSnapMode(null);
       }
       await save(gs);
+
+      // Release tikTikLock after 3 seconds so everyone sees the result
+      setTimeout(async () => {
+        try {
+          const gs2 = JSON.parse(JSON.stringify(gameData));
+          gs2.tikTikLock = null;
+          gs2.ts = Date.now();
+          await setGameState(roomCode, gs2);
+        } catch (e) { /* silent */ }
+      }, 3000);
     };
     doSnap();
   };
@@ -935,7 +982,7 @@ export default function App() {
                 return (
                   <div key={p.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 10px', background: 'rgba(0,0,0,.15)', border: `2px solid ${active ? S.gbright : 'rgba(255,255,255,.08)'}`, borderRadius: 12, minWidth: 110 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: active ? S.gbright : S.dim }}>{active ? '⏳ ' : ''}{p.name}</div>
-                    <HandGrid cards={hand} small faceUp={revealed}
+                    <HandGrid cards={hand} small faceUp={revealed} flipped
                       glowIdx={glowSlot?.pid === p.id ? glowSlot.slot : null}
                       onClick={ci => { if (ability && ['peekOther', 'blindSwap', 'lookSwap'].includes(ability) && aStep === 0) { setSelOp(p.id); setSelOc(ci); } }}
                       hl={ci => selOp === p.id && selOc === ci} />
@@ -956,6 +1003,7 @@ export default function App() {
                   {snapMode.targetPid === pid ? `${pname} ${t.you}` : players.find(p => p.id === snapMode.targetPid)?.name}
                 </div>
                 <HandGrid cards={gameData.hands?.[snapMode.targetPid] || []} faceUp={false}
+                  flipped={snapMode.targetPid !== pid}
                   hl={ci => hovIdx === ci} hoveredIdx={hovIdx}
                   onHoverIdx={ci => setHovIdx(ci)} onLeaveIdx={() => setHovIdx(null)}
                   hoverLabelText={t.selectedCard}
@@ -1016,30 +1064,54 @@ export default function App() {
             {/* ═══ OVERLAYS ═══ */}
 
             {/* Swap animation */}
-            {swapAnim && (
+            {swapAnim && (() => {
+              const dn = (idx) => { const map = { 0: 3, 1: 4, 2: 1, 3: 2 }; return idx < 4 ? map[idx] : idx + 1; };
+              return (
               <div className="overlay" style={{ background: 'rgba(0,0,0,.92)', zIndex: 70 }}>
-                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 40, color: S.gbright, textAlign: 'center', letterSpacing: 6, textShadow: '0 0 30px rgba(212,168,67,.4)' }}>🔄 {t.swapAnimation}</div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 60, marginTop: 32, position: 'relative', minHeight: 200 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, transform: swapAnim.phase === 'sliding' ? 'translateX(100px)' : 'translateX(0)', transition: 'transform 3s cubic-bezier(0.25,0.1,0.25,1)' }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: S.gbright, padding: '4px 12px', background: 'rgba(212,168,67,.15)', borderRadius: 6, border: '1px solid rgba(212,168,67,.3)' }}>{swapAnim.p1}</div>
+                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 32, color: S.gbright, textAlign: 'center', letterSpacing: 4, textShadow: '0 0 30px rgba(212,168,67,.4)' }}>
+                  🔄 {t.swapAnimation}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 24, position: 'relative', minHeight: 180 }}>
+                  {/* Player 1 — left side */}
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                    marginRight: 50,
+                    transform: swapAnim.phase === 'sliding' ? 'translateX(70px)' : 'translateX(0)',
+                    transition: 'transform 3s cubic-bezier(0.25,0.1,0.25,1)',
+                  }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: S.gbright, padding: '4px 12px', background: 'rgba(212,168,67,.15)', borderRadius: 6, border: '1px solid rgba(212,168,67,.3)' }}>{swapAnim.p1}</div>
                     <Card card={{ rank: '?', suit: '?' }} faceUp={false} />
-                    <div style={{ fontSize: 13, color: S.gold, fontFamily: "'JetBrains Mono',monospace" }}>Kart #{swapAnim.c1 + 1}</div>
+                    <div style={{ fontSize: 13, color: S.gold, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700 }}>Kart #{dn(swapAnim.c1)}</div>
                   </div>
-                  <div style={{ fontSize: 40, color: S.gold, position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', textShadow: '0 0 20px rgba(212,168,67,.5)' }}>⇄</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, transform: swapAnim.phase === 'sliding' ? 'translateX(-100px)' : 'translateX(0)', transition: 'transform 3s cubic-bezier(0.25,0.1,0.25,1)' }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: S.gbright, padding: '4px 12px', background: 'rgba(212,168,67,.15)', borderRadius: 6, border: '1px solid rgba(212,168,67,.3)' }}>{swapAnim.p2}</div>
+
+                  {/* Arrow — between cards */}
+                  <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', fontSize: 32, color: S.gold, textShadow: '0 0 20px rgba(212,168,67,.5)', zIndex: 2 }}>⇄</div>
+
+                  {/* Player 2 — right side */}
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                    marginLeft: 50,
+                    transform: swapAnim.phase === 'sliding' ? 'translateX(-70px)' : 'translateX(0)',
+                    transition: 'transform 3s cubic-bezier(0.25,0.1,0.25,1)',
+                  }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: S.gbright, padding: '4px 12px', background: 'rgba(212,168,67,.15)', borderRadius: 6, border: '1px solid rgba(212,168,67,.3)' }}>{swapAnim.p2}</div>
                     <Card card={{ rank: '?', suit: '?' }} faceUp={false} />
-                    <div style={{ fontSize: 13, color: S.gold, fontFamily: "'JetBrains Mono',monospace" }}>Kart #{swapAnim.c2 + 1}</div>
+                    <div style={{ fontSize: 13, color: S.gold, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700 }}>Kart #{dn(swapAnim.c2)}</div>
                   </div>
                 </div>
+
                 {swapAnim.phase === 'done' && (
-                  <div style={{ marginTop: 24, padding: '14px 32px', background: 'rgba(212,168,67,.12)', border: `2px solid ${S.gold}`, borderRadius: 12, textAlign: 'center', animation: 'din .4s ease-out' }}>
-                    <div style={{ fontSize: 20, color: S.gbright, fontWeight: 700, letterSpacing: 2 }}>{swapAnim.p1} #{swapAnim.c1 + 1} ⇄ {swapAnim.p2} #{swapAnim.c2 + 1}</div>
-                    <div style={{ fontSize: 15, color: S.dim, marginTop: 6 }}>{t.cardsSwapped}</div>
+                  <div style={{ marginTop: 24, padding: '14px 28px', background: 'rgba(212,168,67,.12)', border: `2px solid ${S.gold}`, borderRadius: 12, textAlign: 'center', animation: 'din .4s ease-out' }}>
+                    <div style={{ fontSize: 18, color: S.gbright, fontWeight: 700 }}>
+                      {swapAnim.p1} #{dn(swapAnim.c1)} ⇄ {swapAnim.p2} #{dn(swapAnim.c2)}
+                    </div>
+                    <div style={{ fontSize: 14, color: S.dim, marginTop: 6 }}>{t.cardsSwapped}</div>
                   </div>
                 )}
               </div>
-            )}
+              );
+            })()}
 
             {/* Initial peek */}
             {iPeek && <div className="overlay" style={{ background: 'rgba(0,0,0,.75)' }} onClick={() => { setIPeek(false); setPeekCards({}); }}>
@@ -1073,7 +1145,7 @@ export default function App() {
               {['peekOther', 'blindSwap', 'lookSwap'].includes(ability) && !selOp && aStep === 0 && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>{others.map(p => <button key={p.id} className="btn bsm bs" onClick={() => setSelOp(p.id)}>{p.name}</button>)}</div>}
               {selOp && (['peekOther', 'blindSwap'].includes(ability) || (ability === 'lookSwap' && aStep === 0)) && (
                 <div><div style={{ color: S.light, fontSize: 14, fontWeight: 600, textAlign: 'center', marginBottom: 6 }}>{players.find(p => p.id === selOp)?.name}</div>
-                <HandGrid cards={gameData.hands[selOp] || []} faceUp={false} hl={ci => selOc === ci || hovIdx === ci} hoveredIdx={hovIdx} onHoverIdx={ci => setHovIdx(ci)} onLeaveIdx={() => setHovIdx(null)} hoverLabelText={t.selectedCard} onClick={ci => { setSelOc(ci); setHovIdx(null); }} /></div>
+                <HandGrid cards={gameData.hands[selOp] || []} faceUp={false} flipped hl={ci => selOc === ci || hovIdx === ci} hoveredIdx={hovIdx} onHoverIdx={ci => setHovIdx(ci)} onLeaveIdx={() => setHovIdx(null)} hoverLabelText={t.selectedCard} onClick={ci => { setSelOc(ci); setHovIdx(null); }} /></div>
               )}
               {ability === 'peekSelf' && <div><div style={{ color: S.light, fontSize: 14, fontWeight: 600, textAlign: 'center', marginBottom: 6 }}>{pname}</div><HandGrid cards={myHand} faceUp={false} hl={ci => selMy === ci || hovIdx === ci} hoveredIdx={hovIdx} onHoverIdx={ci => setHovIdx(ci)} onLeaveIdx={() => setHovIdx(null)} hoverLabelText={t.selectedCard} onClick={ci => { setSelMy(ci); setHovIdx(null); }} /></div>}
               {ability === 'blindSwap' && selOp && selOc !== null && <div><div style={{ color: S.dim, marginBottom: 6, fontSize: 13, textAlign: 'center' }}>{t.selectYourCard}</div><HandGrid cards={myHand} faceUp={false} hl={ci => selMy === ci || hovIdx === ci} hoveredIdx={hovIdx} onHoverIdx={ci => setHovIdx(ci)} onLeaveIdx={() => setHovIdx(null)} hoverLabelText={t.selectedCard} onClick={ci => { setSelMy(ci); setHovIdx(null); }} /></div>}
@@ -1091,7 +1163,7 @@ export default function App() {
                 <thead><tr><th style={{ padding: '8px 16px', borderBottom: '1px solid rgba(212,168,67,.15)', fontFamily: "'Playfair Display',serif", color: S.gold, fontSize: 14, textAlign: 'left' }}>{t.players}</th><th style={{ padding: '8px 16px', borderBottom: '1px solid rgba(212,168,67,.15)', fontFamily: "'Playfair Display',serif", color: S.gold, fontSize: 14, textAlign: 'center' }}>{t.round} {gameData.round}</th><th style={{ padding: '8px 16px', borderBottom: '1px solid rgba(212,168,67,.15)', fontFamily: "'Playfair Display',serif", color: S.gold, fontSize: 14, textAlign: 'center' }}>{t.total}</th></tr></thead>
                 <tbody>{[...players].sort((a, b) => (scores[a.id] || 0) - (scores[b.id] || 0)).map((p, i) => <tr key={p.id} style={{ background: i === 0 ? 'rgba(212,168,67,.15)' : 'transparent' }}><td style={{ padding: '8px 16px', borderBottom: '1px solid rgba(212,168,67,.08)' }}>{i === 0 ? '🏆 ' : ''}{p.name} {p.id === pid ? t.you : ''}</td><td style={{ padding: '8px 16px', borderBottom: '1px solid rgba(212,168,67,.08)', textAlign: 'center', fontFamily: "'JetBrains Mono',monospace" }}>{gameData.roundScores[p.id]}</td><td style={{ padding: '8px 16px', borderBottom: '1px solid rgba(212,168,67,.08)', textAlign: 'center', fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{scores[p.id] || 0}</td></tr>)}</tbody>
               </table>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>{players.map(p => <div key={p.id} style={{ textAlign: 'center' }}><div style={{ fontSize: 12, marginBottom: 4, color: S.dim }}>{p.name}</div><HandGrid cards={gameData.hands[p.id] || []} small faceUp /></div>)}</div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>{players.map(p => <div key={p.id} style={{ textAlign: 'center' }}><div style={{ fontSize: 12, marginBottom: 4, color: S.dim }}>{p.name}</div><HandGrid cards={gameData.hands[p.id] || []} small faceUp flipped={p.id !== pid} /></div>)}</div>
               {isHost && <button className="btn bp" style={{ maxWidth: 240 }} onClick={nextRound}>{t.nextRound}</button>}
             </div>}
 
