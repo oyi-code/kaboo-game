@@ -567,6 +567,7 @@ export default function App() {
 
   const keepDrawn = (idx) => {
     if (!drawn) return;
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
     const dnMap = { 0: 3, 1: 4, 2: 1, 3: 2 };
     const displaySlot = idx < 4 ? dnMap[idx] : idx + 1;
     askConfirm(t.confirmKeep.replace('{slot}', displaySlot), async () => {
@@ -584,6 +585,7 @@ export default function App() {
 
   const discardDrawn = () => {
     if (!drawn) return;
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
     askConfirm(t.confirmDiscard, async () => {
       setConfirm(null);
       const gs = JSON.parse(JSON.stringify(gameData));
@@ -609,6 +611,7 @@ export default function App() {
   };
 
   const execAbil = () => {
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
     const doExec = async () => {
       setConfirm(null);
       const gs = JSON.parse(JSON.stringify(gameData));
@@ -677,6 +680,7 @@ export default function App() {
   const callCabo = () => {
     if (!isMyTurn || phase !== 'start') return;
     if (!caboAvailable) { notify(t.caboNotYet); return; }
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
     askConfirm(t.confirmCabo, async () => {
       setConfirm(null);
       const gs = JSON.parse(JSON.stringify(gameData));
@@ -728,10 +732,10 @@ export default function App() {
       const gs = JSON.parse(JSON.stringify(gameData));
       if (gs.tikTikUsedForCard === true) { notify(t.tikTikUsed); setSnapMode(null); gs.tikTikLock = null; await save(gs); return; }
       gs.tikTikUsedForCard = true;
-      gs.tikTikLock = null; // Release lock
+      // Keep lock active — will release 3s after result
 
       const tc = gs.hands[targetPid]?.[cardIdx];
-      if (!tc) { setSnapMode(null); await save(gs); return; }
+      if (!tc) { setSnapMode(null); gs.tikTikLock = null; await save(gs); return; }
       const ld = gs.discardPile[gs.discardPile.length - 1];
 
       if (cardValue(tc) === cardValue(ld)) {
@@ -758,6 +762,16 @@ export default function App() {
         setSnapMode(null);
       }
       await save(gs);
+
+      // Release tikTikLock after 3 seconds so everyone sees the result
+      setTimeout(async () => {
+        try {
+          const gs2 = JSON.parse(JSON.stringify(gameData));
+          gs2.tikTikLock = null;
+          gs2.ts = Date.now();
+          await setGameState(roomCode, gs2);
+        } catch (e) { /* silent */ }
+      }, 3000);
     };
     doSnap();
   };
