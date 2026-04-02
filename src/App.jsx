@@ -119,7 +119,7 @@ function ConfirmDialog({ message, onYes, onNo, t }) {
 function ActionBanner({ text }) {
   if (!text) return null;
   return (
-    <div style={{ position: 'fixed', top: 100, left: '50%', transform: 'translateX(-50%)', zIndex: 90, background: 'rgba(0,0,0,.88)', border: '2px solid #d4a843', padding: '12px 28px', borderRadius: 12, color: '#f0c75e', fontWeight: 700, fontSize: 15, maxWidth: '90vw', textAlign: 'center', animation: 'slideInBanner .4s ease-out', boxShadow: '0 8px 32px rgba(0,0,0,.5)', whiteSpace: 'pre-wrap' }}>
+    <div style={{ position: 'fixed', top: 'calc(100px + env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 90, background: 'rgba(0,0,0,.88)', border: '2px solid #d4a843', padding: '12px 28px', borderRadius: 12, color: '#f0c75e', fontWeight: 700, fontSize: 15, maxWidth: '90vw', textAlign: 'center', animation: 'slideInBanner .4s ease-out', boxShadow: '0 8px 32px rgba(0,0,0,.5)', whiteSpace: 'pre-wrap' }}>
       {text}
     </div>
   );
@@ -181,7 +181,7 @@ function botPlay(gs, botId, pOrder) {
 // MAIN APP
 // ══════════════════════════════════════════
 export default function App() {
-  const [lang, setLang] = useState(() => localStorage.getItem('kaboo_lang') || 'tr');
+  const [lang] = useState('tr');
   const [pname, setPname] = useState(() => localStorage.getItem('kaboo_name') || '');
   const [pid] = useState(() => { let id = localStorage.getItem('kaboo_pid'); if (!id) { id = generatePlayerId(); localStorage.setItem('kaboo_pid', id); } return id; });
   const t = LANG[lang];
@@ -231,6 +231,13 @@ export default function App() {
   const [swapAnim, setSwapAnim] = useState(null);
   const swapPendingRef = useRef(null);
 
+  // PWA install prompt
+  const [showInstall, setShowInstall] = useState(false);
+  const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  useEffect(() => {
+    if (!isPWA) setShowInstall(true);
+  }, []);
+
   // Confirm dialog
   const [confirm, setConfirm] = useState(null); // { message, onYes }
 
@@ -256,7 +263,6 @@ export default function App() {
   const lastActionTsRef = useRef(0);
   showChatRef.current = showChat;
 
-  useEffect(() => { localStorage.setItem('kaboo_lang', lang); }, [lang]);
   useEffect(() => { localStorage.setItem('kaboo_name', pname); }, [pname]);
   useEffect(() => { const p = new URLSearchParams(window.location.search).get('room'); if (p) setJoinCode(p.toUpperCase()); }, []);
 
@@ -394,7 +400,7 @@ export default function App() {
     else if (la.type === 'drew') { txt = `${nm} ${t.drewFromPile}`; detail = `${nm} çekme destesinden kart çekti.`; }
     else if (la.type === 'took_discard') { txt = `${nm} ${t.tookFromDiscard}`; detail = `${nm} atma destesinden kart aldı.`; }
     else if (la.type === 'tikTik_claimed') { txt = `👊 ${nm} TIK TIK'a bastı — hamle yapıyor, bekle!`; detail = `${nm} TIK TIK hakkını kullandı. Kart seçiyor...`; }
-    else if (la.type === 'tikTik_late') { txt = `⏰ ${nm} TIK TIK ${lang === 'tr' ? 'için geç kaldı!' : 'was too late!'} (${la.winner} ${lang === 'tr' ? 'kazandı' : 'won'})`; detail = `${nm} TIK TIK'a basmak istedi ama ${la.winner} daha hızlıydı!`; }
+    else if (la.type === 'tikTik_late') { txt = `⏰ ${nm} TIK TIK için geç kaldı! (${la.winner} kazandı)`; detail = `${nm} TIK TIK'a basmak istedi ama ${la.winner} daha hızlıydı!`; }
     if (txt) {
       setLastMoveText(txt);
       setLastMoveDetail(detail);
@@ -548,7 +554,7 @@ export default function App() {
   // ══════════════════════════════════════════
   const drawFromPile = async () => {
     if (!isMyTurn || phase !== 'start' || drawn) return;
-    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK yapıyor, bekle!`); return; }
     const gs = JSON.parse(JSON.stringify(gameData));
     if (!gs.drawPile?.length) { const top = gs.discardPile.pop(); gs.drawPile = shuffle(gs.discardPile); gs.discardPile = [top]; }
     const card = gs.drawPile.shift();
@@ -558,7 +564,7 @@ export default function App() {
 
   const takeFromDiscard = async () => {
     if (!isMyTurn || phase !== 'start' || !topDiscard) return;
-    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK yapıyor, bekle!`); return; }
     const gs = JSON.parse(JSON.stringify(gameData));
     const card = gs.discardPile.pop();
     gs.lastAction = { type: 'took_discard', pid, name: pname, ts: Date.now() };
@@ -567,7 +573,7 @@ export default function App() {
 
   const keepDrawn = (idx) => {
     if (!drawn) return;
-    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK yapıyor, bekle!`); return; }
     const dnMap = { 0: 3, 1: 4, 2: 1, 3: 2 };
     const displaySlot = idx < 4 ? dnMap[idx] : idx + 1;
     askConfirm(t.confirmKeep.replace('{slot}', displaySlot), async () => {
@@ -585,7 +591,7 @@ export default function App() {
 
   const discardDrawn = () => {
     if (!drawn) return;
-    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK yapıyor, bekle!`); return; }
     askConfirm(t.confirmDiscard, async () => {
       setConfirm(null);
       const gs = JSON.parse(JSON.stringify(gameData));
@@ -611,7 +617,7 @@ export default function App() {
   };
 
   const execAbil = () => {
-    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK yapıyor, bekle!`); return; }
     const doExec = async () => {
       setConfirm(null);
       const gs = JSON.parse(JSON.stringify(gameData));
@@ -680,7 +686,7 @@ export default function App() {
   const callCabo = () => {
     if (!isMyTurn || phase !== 'start') return;
     if (!caboAvailable) { notify(t.caboNotYet); return; }
-    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK ${lang === 'tr' ? 'yapıyor, bekle!' : 'in progress, wait!'}`); return; }
+    if (gameData.tikTikLock) { notify(`${gameData.tikTikLock} TIK TIK yapıyor, bekle!`); return; }
     askConfirm(t.confirmCabo, async () => {
       setConfirm(null);
       const gs = JSON.parse(JSON.stringify(gameData));
@@ -766,10 +772,7 @@ export default function App() {
       // Release tikTikLock after 3 seconds so everyone sees the result
       setTimeout(async () => {
         try {
-          const gs2 = JSON.parse(JSON.stringify(gameData));
-          gs2.tikTikLock = null;
-          gs2.ts = Date.now();
-          await setGameState(roomCode, gs2);
+          await updateGameState(roomCode, { tikTikLock: null });
         } catch (e) { /* silent */ }
       }, 3000);
     };
@@ -823,7 +826,7 @@ export default function App() {
     <div className="kaboo-root">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@500&display=swap');
-        .kaboo-root{font-family:'Crimson Text',Georgia,serif;min-height:100vh;background:radial-gradient(ellipse at center,#2d7a42 0%,#1a5c2e 40%,#0e3a1a 100%);color:#e8dcc8;position:relative;overflow-x:hidden}
+        .kaboo-root{font-family:'Crimson Text',Georgia,serif;min-height:100vh;min-height:100dvh;background:radial-gradient(ellipse at center,#2d7a42 0%,#1a5c2e 40%,#0e3a1a 100%);color:#e8dcc8;position:relative;overflow-x:hidden}
         .kaboo-root::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.08'/%3E%3C/svg%3E");pointer-events:none;z-index:0}
         .kaboo-root::after{content:'';position:fixed;inset:0;border:10px solid #5c3a1e;border-image:linear-gradient(135deg,#8b6914,#5c3a1e,#8b6914,#3d2510) 1;pointer-events:none;z-index:1}
         .kaboo-root>*{position:relative;z-index:2}.kaboo-root *{box-sizing:border-box}
@@ -867,23 +870,18 @@ export default function App() {
         @media(max-width:480px){.kc{width:56px;height:80px}.kc.sm{width:42px;height:60px}.kr{font-size:18px}.kc.sm .kr{font-size:13px}.ks{font-size:14px}.kc.sm .ks{font-size:10px}}
       `}</style>
 
-      {/* Lang */}
-      <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 100, display: 'flex', gap: 4, background: 'rgba(0,0,0,.3)', borderRadius: 8, padding: 4 }}>
-        {['TR', 'EN'].map(l => <button key={l} onClick={() => setLang(l.toLowerCase())} style={{ padding: '4px 10px', border: 'none', borderRadius: 6, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, cursor: 'pointer', background: lang === l.toLowerCase() ? S.gold : 'transparent', color: lang === l.toLowerCase() ? '#1a1a1a' : S.dim }}>{l}</button>)}
-      </div>
-
       {/* Notifications */}
-      {notif && <div style={{ position: 'fixed', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 100, background: 'rgba(0,0,0,.9)', border: `1px solid ${S.gold}`, padding: '10px 24px', borderRadius: 8, color: S.gbright, fontWeight: 600, fontSize: 15, animation: 'nin .3s ease-out', whiteSpace: 'nowrap' }}>{notif}</div>}
+      {notif && <div style={{ position: 'fixed', top: 'calc(56px + env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 100, background: 'rgba(0,0,0,.9)', border: `1px solid ${S.gold}`, padding: '10px 24px', borderRadius: 8, color: S.gbright, fontWeight: 600, fontSize: 15, animation: 'nin .3s ease-out', whiteSpace: 'nowrap' }}>{notif}</div>}
       {floats.map(r => <div key={r.id} style={{ position: 'fixed', zIndex: 200, fontSize: 36, animation: 'fup 2.5s ease-out forwards', pointerEvents: 'none', left: `${25 + Math.random() * 50}%`, top: '55%' }}>{r.e}</div>)}
 
       {/* Confirm dialog */}
       {confirm && <ConfirmDialog message={confirm.message} onYes={confirm.onYes} onNo={() => setConfirm(null)} t={t} />}
 
-      <div style={{ padding: 16, minHeight: '100vh' }}>
+      <div style={{ padding: 16, minHeight: '100dvh' }}>
 
         {/* ═══ MENU ═══ */}
         {screen === 'menu' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', gap: 24 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', gap: 24 }}>
             <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: 72, fontWeight: 900, color: S.gbright, textShadow: '0 2px 4px rgba(0,0,0,.5),0 0 40px rgba(212,168,67,.3)', letterSpacing: 12 }}>KABOO</h1>
             <p style={{ fontSize: 18, color: S.dim, letterSpacing: 4, fontStyle: 'italic' }}>{t.subtitle}</p>
             <div style={{ background: 'linear-gradient(145deg,rgba(0,0,0,.3),rgba(0,0,0,.15))', border: '1px solid rgba(212,168,67,.2)', borderRadius: 16, padding: 32, width: '100%', maxWidth: 380 }}>
@@ -894,12 +892,26 @@ export default function App() {
               <button className="btn bs" onClick={handleJoin}>{t.joinRoom}</button>
               {error && <p style={{ color: '#ff6b6b', fontSize: 14, textAlign: 'center', marginTop: 10 }}>{error}</p>}
             </div>
+            {/* PWA Install Prompt */}
+            {showInstall && !isPWA && (
+              <div style={{ background: 'rgba(0,0,0,.3)', border: '1px solid rgba(212,168,67,.25)', borderRadius: 12, padding: '14px 20px', maxWidth: 380, width: '100%', textAlign: 'center' }}>
+                <div style={{ fontSize: 14, color: S.gold, fontWeight: 600, marginBottom: 6 }}>
+                  📱 {'Tam ekran deneyim için:'}
+                </div>
+                <div style={{ fontSize: 13, color: S.dim, lineHeight: 1.5 }}>
+                  Safari → Paylaş (⬆️) → "Ana Ekrana Ekle" ile uygulama gibi oyna!
+                </div>
+                <button onClick={() => setShowInstall(false)} style={{ marginTop: 8, background: 'none', border: 'none', color: S.dim, fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>
+                  {'Kapat'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
         {/* ═══ LOBBY ═══ */}
         {screen === 'lobby' && roomData && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: '100vh', paddingTop: 40, gap: 20 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: '100dvh', paddingTop: 40, gap: 20 }}>
             <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: 48, fontWeight: 900, color: S.gbright, letterSpacing: 8 }}>KABOO</h1>
             <div style={{ textAlign: 'center' }}>
               <div style={{ color: S.dim, fontSize: 13, marginBottom: 6 }}>{t.roomCode}</div>
@@ -938,7 +950,7 @@ export default function App() {
 
         {/* ═══ GAME ═══ */}
         {screen === 'game' && gameData && roomData && (
-          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 32px)', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100dvh - 32px)', gap: 8 }}>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
               <span style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, color: S.gold }}>{t.round} {gameData.round}</span>
@@ -961,7 +973,7 @@ export default function App() {
             {/* TIK TIK lock banner */}
             {gameData.tikTikLock && !snapMode && (
               <div style={{ textAlign: 'center', padding: '8px 16px', background: 'linear-gradient(135deg,rgba(243,156,18,.3),rgba(243,156,18,.15))', border: '1px solid rgba(243,156,18,.5)', borderRadius: 8, color: '#f39c12', fontWeight: 600, animation: 'cflash .8s ease-in-out infinite alternate' }}>
-                👊 {gameData.tikTikLock} TIK TIK {lang === 'tr' ? 'yapıyor — hamle bekle!' : 'in progress — wait!'}
+                👊 {gameData.tikTikLock} TIK TIK {'yapıyor — hamle bekle!'}
               </div>
             )}
 
@@ -1117,7 +1129,7 @@ export default function App() {
             {iPeek && <div className="overlay" style={{ background: 'rgba(0,0,0,.75)' }} onClick={() => { setIPeek(false); setPeekCards({}); }}>
               <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 52, color: S.gbright }}>{iPeekT}</div>
               <div style={{ color: S.gold, fontFamily: "'Playfair Display',serif", fontSize: 20 }}>{t.lookingAtCards}</div>
-              <div style={{ color: S.dim, fontSize: 14 }}>📍 #1 ve #2 {lang === 'tr' ? 'numaralı kartların' : 'numbered cards'}</div>
+              <div style={{ color: S.dim, fontSize: 14 }}>📍 #1 ve #2 {'numaralı kartların'}</div>
               <div style={{ display: 'flex', gap: 16 }}>{myHand.slice(2, 4).map((c, i) => c && <Card key={i} card={c} faceUp anim="da" cardNumber={i + 1} />)}</div>
               <div style={{ color: S.dim, fontStyle: 'italic', fontSize: 14, marginTop: 8 }}>{t.closeCard}</div>
             </div>}
@@ -1178,11 +1190,11 @@ export default function App() {
             </div>}
 
             {/* Chat */}
-            <button onClick={() => { setShowChat(!showChat); if (!showChat) setChatUnread(0); }} style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 40, width: 48, height: 48, borderRadius: '50%', background: S.gold, color: '#1a1a1a', border: 'none', fontSize: 20, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button onClick={() => { setShowChat(!showChat); if (!showChat) setChatUnread(0); }} style={{ position: 'fixed', bottom: 'calc(16px + env(safe-area-inset-bottom))', right: 'calc(16px + env(safe-area-inset-right))', zIndex: 40, width: 48, height: 48, borderRadius: '50%', background: S.gold, color: '#1a1a1a', border: 'none', fontSize: 20, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               💬
               {chatUnread > 0 && <span style={{ position: 'absolute', top: -6, right: -6, background: '#c9302c', color: '#fff', fontSize: 11, fontWeight: 700, minWidth: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono',monospace", padding: '0 4px' }}>{chatUnread}</span>}
             </button>
-            {showChat && <div style={{ position: 'fixed', bottom: 72, right: 16, zIndex: 40, width: 300, maxWidth: 'calc(100vw - 32px)', maxHeight: 400, background: 'rgba(14,58,26,.95)', border: '1px solid rgba(212,168,67,.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', backdropFilter: 'blur(10px)' }}>
+            {showChat && <div style={{ position: 'fixed', bottom: 'calc(72px + env(safe-area-inset-bottom))', right: 'calc(16px + env(safe-area-inset-right))', zIndex: 40, width: 300, maxWidth: 'calc(100vw - 32px)', maxHeight: 400, background: 'rgba(14,58,26,.95)', border: '1px solid rgba(212,168,67,.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', backdropFilter: 'blur(10px)' }}>
               <div style={{ padding: '10px 16px', borderBottom: '1px solid rgba(212,168,67,.15)', fontFamily: "'Playfair Display',serif", fontSize: 14, color: S.gold }}>{t.chat}</div>
               <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', maxHeight: 280, display: 'flex', flexDirection: 'column', gap: 4 }}>{chatMsgs.map((m, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.4 }}><span style={{ fontWeight: 600, color: S.gold, marginRight: 6 }}>{m.name}:</span>{m.text}</div>)}<div ref={chatEndRef} /></div>
               <div style={{ display: 'flex', gap: 4, padding: 8, borderTop: '1px solid rgba(212,168,67,.15)' }}><input className="inp" style={{ fontSize: 13 }} placeholder={t.sendMsg} value={chatIn} onChange={e => setChatIn(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMsg()} maxLength={200} /><button className="btn bsm bp" style={{ width: 'auto', flexShrink: 0 }} onClick={sendMsg}>{t.send}</button></div>
