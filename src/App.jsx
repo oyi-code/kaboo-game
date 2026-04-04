@@ -744,7 +744,8 @@ export default function App() {
       if (!tc) { setSnapMode(null); gs.tikTikLock = null; await save(gs); return; }
       const ld = gs.discardPile[gs.discardPile.length - 1];
 
-      if (cardValue(tc) === cardValue(ld)) {
+      const snapMatch = cardValue(tc) === cardValue(ld) || (tc.rank === 'K' && ld.rank === 'K');
+      if (snapMatch) {
         playSound('snap');
         gs.hands[targetPid][cardIdx] = null;
         if (targetPid !== pid) {
